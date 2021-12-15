@@ -1,0 +1,19 @@
+[BASIC]
+
+# Do not cry when private methods and functions don't have docstring
+no-docstring-rgx=_[A_Za-z][A-Za-z0-9_]{2,30}$   
+
+[MESSAGES CONTROL]
+
+# W0142: Disable warnings "magic *, **"
+# W1401: Disable warnings "Anomalous backslash in string"
+disable=W0142, W1401
+
+[TYPECHECK]
+# Technically quantities is not a class, but oh well ...
+ignored-classes=quantities
+
+[FORMAT]
+
+# Maximum number of characters on a single line.
+max-line-length=100
