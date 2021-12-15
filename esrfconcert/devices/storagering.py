@@ -17,10 +17,32 @@ class StorageRing(Device):
         return self._machinfo.proxy.SR_Current * q.mA
 
     async def _get_energy(self):
-        raise AccessorNotImplementedError
+        """
+        Storage ring energy not accessible via machinfo
+        so it is hard-coded
+        """
+        return 6 * q.GeV
 
     async def _get_lifetime(self):
-        raise AccessorNotImplementedError
+        return self._machinfo.proxy.SR_Lifetime * q.s
 
     async def _get_state(self):
-        raise AccessorNotImplementedError
+        """
+        SR_Mode returns an Integer for different states of 
+        the storage ring. Indexing not clear except for
+        1 = USM = USerMode --> Output: "UserOperation"
+        """
+        operation_state = self._machinfo.proxy.SR_Mode
+        state = "unknown"
+        if operation_state == 1:
+            state = "UserOperation"
+        elif operation_state == 2:
+            state = "MachineDevelopment"
+        elif operation_state == 3:
+            state = "Shutdown"
+        elif operation_state == 4:
+            state = "SafetyTest"
+        elif operation_state == 5:
+            state = "InsertionDeviceTest"
+        return state
+
