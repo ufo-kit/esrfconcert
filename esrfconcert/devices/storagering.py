@@ -1,9 +1,10 @@
 """ESRF storage ring."""
+from concert.base import State
 from concert.quantities import q
 from concert.devices.storagerings.base import StorageRing as BaseStorageRing
 
 
-class StorageRing(Device):
+class StorageRing(BaseStorageRing):
 
     """ESRF storage ring."""
 
@@ -28,9 +29,8 @@ class StorageRing(Device):
 
     async def _get_state(self):
         """
-        SR_Mode returns an Integer for different states of 
-        the storage ring. Indexing not clear except for
-        1 = USM = USerMode --> Output: "UserOperation"
+        SR_Mode returns an Integer for different states of the storage ring. Indexing not clear
+        except for 1 = USM = USerMode --> Output: "UserOperation"
         """
         operation_state = self._machinfo.proxy.SR_Mode
         state = "unknown"
@@ -45,4 +45,3 @@ class StorageRing(Device):
         elif operation_state == 5:
             state = "InsertionDeviceTest"
         return state
-
