@@ -23,15 +23,15 @@ steps_per_degree = 26222
 
 # scanning rotation motor
 # TO CHECK: INDECES CORRECT? IN ANDREI'S SCRIPT CONSTRUCTORS ARE CALLED WITH INDEX-1?!
-lamino_rot = ContinuousRotationMotor('Sam', 5, micos_connection[0], micos_connection[1])
-lamino_tilt = ContinuousRotationMotor('Cont2', 1, micos_connection[0], micos_connection[1])
+lamino_rot = ContinuousRotationMotor('Sam', 4, micos_connection[0], micos_connection[1])
+lamino_tilt = ContinuousRotationMotor('Cont2', 0, micos_connection[0], micos_connection[1])
 # sample translation motors
 # puscher
-sx45_motor = ContinuousLinearMotor('Sam', 1, micos_connection[0], micos_connection[1])
-sy45_motor = ContinuousLinearMotor('Sam', 2, micos_connection[0], micos_connection[1])
+sx45_motor = ContinuousLinearMotor('Sam', 0, micos_connection[0], micos_connection[1])
+sy45_motor = ContinuousLinearMotor('Sam', 1, micos_connection[0], micos_connection[1])
 # magnets
-px45_motor = ContinuousLinearMotor('Sam', 3, micos_connection[0], micos_connection[1])
-py45_motor = ContinuousLinearMotor('Sam', 4, micos_connection[0], micos_connection[1])
+px45_motor = ContinuousLinearMotor('Sam', 2, micos_connection[0], micos_connection[1])
+py45_motor = ContinuousLinearMotor('Sam', 3, micos_connection[0], micos_connection[1])
 
 # Camera and viewer
 camera = Camera('net')
