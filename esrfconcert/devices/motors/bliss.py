@@ -19,29 +19,22 @@ class _Base(object):
         self._device = device
 
     async def _get_position(self):
-        pos = await self._device.position
-        return pos
+        return self._device.position
 
     async def _set_position(self, position):
         mv(self._device, position)
 
     async def _get_acceleration(self):
-        acceleration = await self._device.acceleration * ( q.mm / q.s ** 2 )
-
-        return acceleration
+        return self._device.acceleration * ( q.mm / q.s ** 2 )
 
     async def _set_acceleration_unitless(self, acceleration):
-        accelerationIn = acceleration.to(q.mm / q.s ** 2).magnitude
-        await self._device.acceleration = accelerationIn
+        self._device.acceleration = acceleration.to(q.mm / q.s ** 2).magnitude
 
     async def _get_velocity(self):
-        speed = await self._device.velocity * ( q.mm / q.s )
-
-        return speed
+        return self._device.velocity * ( q.mm / q.s )
 
     async def _set_velocity_in_steps(self, velocity):
-        velocityIn = velocity.to(q.mm / q.s ** 2).magnitude
-        await self._device.velocity = velocityIn
+        self._device.velocity = velocity.to(q.mm / q.s ** 2).magnitude
 
     async def _home(self):
         raise AccessorNotImplementedError
@@ -51,14 +44,13 @@ class _Base(object):
 
     async def get_state(self):
         """Return the motor state."""
-        # .state in Bliss returns a bliss.common.axis.AxisState object, necessary to convert it to string?
-        msg = await self._device.state
+        state = self._device.state
 
-        if state == '{} not ready'.format(self._controller):
-            return 'moving'
-        else:
+        if 'READY' in state:
             return 'standby'
-        # TODO: hard limit?
+        else:
+            # TODO: fill the rest of the states
+            return 'moving'
 
 
 class LinearMotor(base.LinearMotor, _Base):
