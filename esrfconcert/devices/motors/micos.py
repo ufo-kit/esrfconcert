@@ -18,7 +18,6 @@ class _Base(object):
         self._controller = controller
         self._index = index
         self._connection = SocketConnection(host, port)
-        resp = self._connection.execute('{} AxisInfo'.format(self._controller, self._index))
 
     async def _get_position_in_steps(self):
         pos = await self._connection.execute('{} Crds ?'.format(self._controller))
@@ -32,7 +31,7 @@ class _Base(object):
         if 'Movement not possible due to soft limits' in msg:
             raise StateError('You cannot move beyond soft limits')
 
-        self['state'].wait('standby', sleep_time=self._connection.sleep_between)
+        await self['state'].wait('standby', sleep_time=self._connection.sleep_between)
 
     async def _get_acceleration_unitless(self):
         acceleration = await self._connection.execute('{} Accel ?'.format(self._controller))
@@ -42,7 +41,7 @@ class _Base(object):
 
     async def _set_acceleration_unitless(self, acceleration):
         await self._connection.send('{} Accel {} {}'.format(self._controller, self._index + 1,
-                                                         acceleration))
+                                                            acceleration))
 
     async def _get_velocity_in_steps(self):
         speed = await self._connection.execute('{} Speed ?'.format(self._controller))
@@ -52,11 +51,11 @@ class _Base(object):
 
     async def _set_velocity_in_steps(self, velocity):
         await self._connection.send('{} Speed {} {}'.format(self._controller, self._index + 1,
-                                                         velocity))
+                                                            velocity))
 
     async def _home(self):
         await self._connection.execute('{} Calibrate {}'.format(self._controller, self._index + 1))
-        self['state'].wait('standby', sleep_time=self._connection.sleep_between)
+        await self['state'].wait('standby', sleep_time=self._connection.sleep_between)
 
     async def _stop(self):
         await self._connection.send('{} Stop'.format(self._controller))
@@ -169,3 +168,7 @@ class ContinuousRotationMotor(RotationMotor, base.ContinuousRotationMotor):
     async def _set_velocity(self, velocity):
         velocity = velocity.to(q.deg / q.s).magnitude
         await self._set_velocity_in_steps(velocity)
+
+    async def _home(self):
+        await self._connection.execute('{} RefMove {}'.format(self._controller, self._index + 1))
+        await self['state'].wait('standby', sleep_time=self._connection.sleep_between)
