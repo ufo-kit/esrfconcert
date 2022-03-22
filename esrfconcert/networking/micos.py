@@ -1,7 +1,7 @@
 """Ethernet connection to micos motors on ANKA laminograph at ID19 at ESRF."""
 
 import logging
-import time
+import asyncio
 from concert.quantities import q
 from concert.networking import base
 
@@ -16,14 +16,21 @@ class SocketConnection(base.SocketConnection):
     def __init__(self, host, port, sleep_between=0.1*q.s):
         super(SocketConnection, self).__init__(host, port, return_sequence='\r\n')
         self.sleep_between = sleep_between
-        self.execute('GetCommands')
+        self._initialized = False
 
-    def execute(self, data):
+    async def send(self, data):
+        if not self._initialized:
+            LOG.debug("Flusing Micos server: %s", await self.recv())
+            LOG.debug("Flusing Micos server: %s", await self.recv())
+            self._initialized = True
+        await super().send(data)
+
+    async def execute(self, data):
         """Send *data*, get and interpret the response."""
-        with self._lock:
-            self.send(data)
-            time.sleep(self.sleep_between.to(q.s).magnitude)
-            result = self.recv()
+        async with self.lock:
+            await self.send(data)
+            await asyncio.sleep(self.sleep_between.to(q.s).magnitude)
+            result = await self.recv()
 
         return result
 

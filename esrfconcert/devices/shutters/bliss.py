@@ -7,14 +7,21 @@ class Shutter(base.Shutter):
 
     """A dummy shutter that can be opened and closed."""
 
-    def __init__(self):
+    def __init__(self, name):
         super(Shutter, self).__init__()
+        self._name = name
 
     async def _open(self):
-        raise AccessorNotImplementedError
+        self.open()
 
     async def _close(self):
-        raise AccessorNotImplementedError
+        self.close()
 
     async def _get_state(self):
-        raise AccessorNotImplementedError
+        state = self.state_string()
+        # .state_string() returns either "OPEN", "CLOSED", or "UNKNOWN"
+        
+        if state == "UNKNOWN":
+            print('Shutter {} is in unknown state'.format(self.name))
+        else:
+            print('Shutter {} is {}'.format(self.name, state))
