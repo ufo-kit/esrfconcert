@@ -1,15 +1,15 @@
-
-# Imports from esrfconcert
-
+import concert
+from concert.quantities import q
+from concert.devices.cameras.uca import Camera
+from concert.ext.viewers import PyplotImageViewer
+from concert.devices.shutters.dummy import Shutter as DummyShutter
+from concert.devices.motors.dummy import (ContinuousLinearMotor as DummyContinuousLinearMotor,
+                                          ContinuousRotationMotor as DummyContinuousRotationMotor)
+from concert.experiments.addons import Consumer, ImageWriter
+from concert.storage import DummyWalker
+from esrfconcert.experiments.laminography import ContinuousLaminography
 from esrfconcert.devices.motors.micos import ContinuousLinearMotor, ContinuousRotationMotor
 from esrfconcert.networking.micos import SocketConnection
-
-# Imports from concert
-
-from concert.devices.cameras.uca import Camera
-
-# Imports from bliss
-
 from bliss.setup_globals import *
 from bliss.common import session
 from bliss.config import static
@@ -18,6 +18,7 @@ from bliss.shell import standard
 # Set parameters
 # Micos Motion Server:
 
+concert.config.PROGRESS_BAR = False
 micos_connection = ('160.103.39.110', 6542)
 steps_per_degree = 26222
 
@@ -35,7 +36,7 @@ py45_motor = ContinuousLinearMotor('Sam', 3, micos_connection[0], micos_connecti
 
 # Camera and viewer
 camera = Camera('net')
-viewer = PyplotImageViewer()
+viewer = PyplotImageViewer(show_refresh_rate=True, force=False)
 
 # Bliss beamline components
 
@@ -51,7 +52,7 @@ blissSessionLamino.setup()
 lmyDevice = blissSessionLamino.env_dict['lmy']
 lmzDevice = blissSessionLamino.env_dict['lmz']
 
-frondendDevice = blissSessionLamino.env_dict['frontendDevice']
+# frondendDevice = blissSessionLamino.env_dict['frontendDevice']
 bsh1Device = blissSessionLamino.env_dict['bsh1']
 bsh2Device = blissSessionLamino.env_dict['bsh2']
 
@@ -65,3 +66,14 @@ blissSessionJens.setup()
 
 simmot1Device = blissSessionJens.env_dict['simmot1']
 simmot2Device = blissSessionJens.env_dict['simmot2']
+
+
+walker = DummyWalker()
+shutter = DummyShutter()
+# flat_motor = DummyContinuousLinearMotor()
+# rot_motor = DummyContinuousRotationMotor()
+rot_motor = lamino_rot
+flat_motor = lamino_tilt
+ex = ContinuousLaminography (walker, flat_motor, rot_motor, shutter, 10 * q.deg, 0 * q.deg, camera)
+live_preview = Consumer(ex.acquisitions, viewer)
+writer = ImageWriter(ex.acquisitions, walker)
