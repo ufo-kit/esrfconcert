@@ -1,101 +1,132 @@
-# TODO: do we still need this?
-"""Micos motors from ANKA laminograph at ID19 at ESRF."""
+"""Bliss motors implementation."""
 
 import asyncio
-from concert.base import StateError, Quantity
+import logging
+from concert.base import check, Quantity
 from concert.devices.motors import base
 from concert.quantities import q
+from bliss.shell.standard import mv
 
-from bliss.shell.standard import umv, mv, umvr, mvr
+
+LOG = logging.getLogger(__name__)
+
 
 class _Base(object):
 
     """Base for all motors included via Bliss on the laminograph at ID19. *Device* is the Tango object
-    used for communication and should be named identically to the name given to the motor in the ID19 
-    beamline configuration.
+    used for communication and should be named identically to the name given to the motor in the
+    ID19 beamline configuration.
     """
 
     def __init__(self, device):
         self._device = device
+        self._velocity = 0 * self['velocity'].unit
+        self['position']._external_lower_getter = self._get_lower_external_position_limit
+        self['position']._external_upper_getter = self._get_upper_external_position_limit
+
+    def _get_external_limit(self, which):
+        return self._device.limits[which]
+
+    async def _get_lower_external_position_limit(self):
+        return self._get_external_limit(0)
+
+    async def _get_upper_external_position_limit(self):
+        return self._get_external_limit(1)
 
     async def _get_position(self):
-        return self._device.position
+        return self._device.position * self['position'].unit
 
     async def _set_position(self, position):
-        mv(self._device, position)
+        mv(self._device, position.to(self['position'].unit).magnitude)
 
     async def _get_acceleration(self):
-        return self._device.acceleration * ( q.mm / q.s ** 2 )
+        return self._device.acceleration * self['acceleration'].unit
 
-    async def _set_acceleration_unitless(self, acceleration):
-        self._device.acceleration = acceleration.to(q.mm / q.s ** 2).magnitude
+    async def _set_acceleration(self, acceleration):
+        self._device.acceleration = acceleration.to(self['acceleration'].unit).magnitude
+
+    async def _get_motion_velocity(self):
+        return self._device.velocity * self['motion_velocity'].unit
+
+    async def _set_motion_velocity(self, velocity):
+        self._device.velocity = velocity.to(self['motion_velocity'].unit).magnitude
 
     async def _get_velocity(self):
-        return self._device.velocity * ( q.mm / q.s )
+        return self._velocity
 
-    async def _set_velocity_in_steps(self, velocity):
-        self._device.velocity = velocity.to(q.mm / q.s ** 2).magnitude
+    async def _set_velocity(self, velocity):
+        self._device.jog(velocity=velocity.to(self['velocity'].unit).magnitude)
+        await asyncio.sleep(self._device.jog_acctime)
+        self._velocity = velocity
 
     async def _home(self):
-        raise AccessorNotImplementedError
+        self._device.home(wait=True)
 
     async def _stop(self):
-        await self._device.stop()
+        self._device.stop(wait=True)
+        self._velocity = 0 * self['velocity'].unit
 
-    async def get_state(self):
+    async def _get_state(self):
         """Return the motor state."""
         state = self._device.state
 
         if 'READY' in state:
             return 'standby'
-        else:
-            # TODO: fill the rest of the states
+        elif 'LIMNEG' in state:
+            return 'hard-limit'
+        elif 'LIMPOS' in state:
+            return 'hard-limit'
+        elif 'MOVING' in state:
             return 'moving'
+        elif 'FAULT' in state:
+            return 'error'
+        elif 'HOME' in state:
+            return 'moving'
+        elif 'OFF' in state:
+            return 'off'
+        elif 'DISABLED' in state:
+            return 'disabled'
 
 
-class LinearMotor(base.LinearMotor, _Base):
+class LinearMotor(_Base, base.LinearMotor):
 
     """A linear motor implementation."""
 
     acceleration = Quantity(q.mm / q.s ** 2)
 
-    def __init__(self, controller, index, host, port):
-        super(LinearMotor, self).__init__()
-        _Base.__init__(self, controller, index, host, port)
-
-    async def _get_position(self):
-        return await self._get_position_in_steps() * q.mm
-
-    async def _set_position(self, position):
-        position = position.to(q.mm).magnitude
-        await self._set_position_in_steps(position)
-
-    async def _get_acceleration(self):
-        return await self._get_acceleration_unitless() * q.mm / q.s ** 2
-
-    async def _set_acceleration(self, acceleration):
-        acceleration = acceleration.to(q.mm / q.s ** 2).magnitude
-        await self._set_acceleration_unitless(acceleration)
-
-    async def _get_state(self):
-        return await _Base.get_state(self)
-
-    async def _home(self):
-        await _Base._home(self)
-
-    async def _stop(self):
-        await _Base._stop(self)
+    def __init__(self, device):
+        base.LinearMotor.__init__(self)
+        _Base.__init__(self, device)
 
 
 class ContinuousLinearMotor(LinearMotor, base.ContinuousLinearMotor):
 
     """A continuous linear motor implementation."""
 
-    async def _get_velocity(self):
-        velocity = await self._get_velocity_in_steps()
+    motion_velocity = Quantity(unit=q.mm / q.s,
+                               help='Motion velocity constant for all motor movement ' +
+                                    'types (position setting, homing, ...)',
+                               check=check(source=['hard-limit', 'standby'],
+                                           target=['hard-limit', 'standby']))
 
-        return velocity * q.mm / q.s
 
-    async def _set_velocity(self, velocity):
-        velocity = velocity.to(q.mm / q.s).magnitude
-        await self._set_velocity_in_steps(velocity)
+class RotationMotor(_Base, base.RotationMotor):
+
+    """A linear motor implementation."""
+
+    acceleration = Quantity(q.deg / q.s ** 2)
+
+    def __init__(self, device):
+        base.RotationMotor.__init__(self)
+        _Base.__init__(self, device)
+
+
+class ContinuousRotationMotor(RotationMotor, base.ContinuousRotationMotor):
+
+    """A continuous linear motor implementation."""
+
+    motion_velocity = Quantity(unit=q.deg / q.s,
+                               help='Motion velocity constant for all motor movement ' +
+                                    'types (position setting, homing, ...)',
+                               check=check(source=['hard-limit', 'standby'],
+                                           target=['hard-limit', 'standby']))
