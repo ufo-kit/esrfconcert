@@ -23,7 +23,7 @@ class Laminography(Experiment):
     num_flats = Parameter()
     num_darks = Parameter()
     num_projections = Parameter()
-    radio_position = Quantity(q.mm)
+    radio_position = Quantity(q.deg)
     flat_position = Quantity(q.deg)
 
     def __init__(self, walker, flat_motor, shutter, radio_position, flat_position, camera,
@@ -134,7 +134,6 @@ class Laminography(Experiment):
         Could be None or a Future.
         :return:
         """
-        await self._camera.set_trigger_source("AUTO")
         async with self._camera.recording():
             for i in range(int(number)):
                 yield await self._camera.grab()
@@ -223,12 +222,22 @@ class ContinuousLaminography(SteppedLaminography):
         await super(ContinuousLaminography, self)._prepare_radios()
         if 'motion_velocity' in self._scanning_motor:
             await self._scanning_motor['motion_velocity'].stash()
+        await self._camera.set_trigger_source('AUTO')
+        width = await self._camera.get_roi_width()
+        height = await self._camera.get_roi_height()
+        bpp = await self._camera.get_sensor_bitdepth() // 8
+        # lid193 has 48 GB memory, let's use maximum 40
+        max_buffered_images = int(40 * 2 ** 30 / (width * height * bpp))
+        await self._camera.set_num_buffers(min(self._num_projections, max_buffered_images))
+        await self._camera.set_buffered(True)
+        LOG.info('Setting num_buffers to %s', await self._camera.get_num_buffers())
 
     async def _finish_radios(self):
         if self._finished:
             return
         await self._prepare_darks()
-        await self._scanning_motor.stop()
+        if await self._scanning_motor.get_state() == 'moving':
+            await self._scanning_motor.stop()
         if 'motion_velocity' in self._scanning_motor:
             await self._scanning_motor['motion_velocity'].restore()
         await self._scanning_motor.set_position(await self.get_start_angle())
@@ -237,14 +246,9 @@ class ContinuousLaminography(SteppedLaminography):
     async def _take_radios(self):
         try:
             await self._prepare_radios()
-            await self._scanning_motor.set_velocity(await self.get_velocity())
-
-            async def callback():
-                await self._finish_radios()
-                if hasattr(self, 'callback'):
-                    await self.callback()
-
-            async for frame in self._produce_frames(await self.get_num_projections(), callback):
-                yield frame
+            async with self._camera.recording():
+                await self._scanning_motor.set_velocity(await self.get_velocity())
+                for i in range(self._num_projections):
+                    yield await self._camera.grab()
         finally:
             await self._finish_radios()
