@@ -231,6 +231,7 @@ class ContinuousLaminography(SteppedLaminography):
         await self._camera.set_num_buffers(min(self._num_projections, max_buffered_images))
         await self._camera.set_buffered(True)
         LOG.info('Setting num_buffers to %s', await self._camera.get_num_buffers())
+        await self._scanning_motor.set_position(await self.get_start_angle())
 
     async def _finish_radios(self):
         if self._finished:
@@ -244,11 +245,33 @@ class ContinuousLaminography(SteppedLaminography):
         self._finished = True
 
     async def _take_radios(self):
+        rot_velocity = await self.get_velocity()
+        # TODO: change this to motion_velocity
+        await self._scanning_motor.set_velocity(rot_velocity)
+        margin_time = rot_velocity / await self._scanning_motor.get_acceleration()
+        # TODO: make this a parameter
+        additional_margin = 0.5 * q.deg
+        margin = 0.5 * rot_velocity * margin_time + additional_margin
+        end_pos = await self.get_start_angle() + await self.get_angular_range() + 2 * margin
+        LOG.debug("End position: %s, additional_margin: %s, margin: %s",
+                 end_pos, additional_margin, margin)
         try:
             await self._prepare_radios()
+            LOG.debug("Starting motion with scanning motor at %s",
+                      await self._scanning_motor.get_position())
+            motion_task = self._scanning_motor.set_position(end_pos)
+            LOG.debug("Waiting %s for acceleration", margin_time)
+            await asyncio.sleep(margin_time.to(q.s).magnitude)
             async with self._camera.recording():
-                await self._scanning_motor.set_velocity(await self.get_velocity())
+                LOG.debug("Camera started recording with scanning motor at %s",
+                          await self._scanning_motor.get_position())
                 for i in range(self._num_projections):
                     yield await self._camera.grab()
+                LOG.debug("Grabbing frames completed with scanning motor at %s",
+                          await self._scanning_motor.get_position())
+                await motion_task
+                LOG.debug("Motion finished")
         finally:
+            # TODO: remove after motion_velocity is implemented
+            await self._scanning_motor.set_velocity(25 * q.deg / q.s)
             await self._finish_radios()
