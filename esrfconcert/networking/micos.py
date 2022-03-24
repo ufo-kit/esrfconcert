@@ -20,8 +20,7 @@ class SocketConnection(base.SocketConnection):
 
     async def send(self, data):
         if not self._initialized:
-            LOG.debug("Flusing Micos server: %s", await self.recv())
-            LOG.debug("Flusing Micos server: %s", await self.recv())
+            LOG.debug("Flushing Micos server: %s", await self.recv())
             self._initialized = True
         await super().send(data)
 
