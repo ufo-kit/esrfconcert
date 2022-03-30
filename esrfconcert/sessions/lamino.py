@@ -1,6 +1,6 @@
 from numpy import asarray_chkfinite
 import asyncio
-
+import numpy as np
 import concert
 from concert.quantities import q
 from concert.devices.cameras.uca import Camera
@@ -9,6 +9,8 @@ from concert.devices.shutters.dummy import Shutter as DummyShutter
 from concert.devices.motors.dummy import (ContinuousLinearMotor as DummyContinuousLinearMotor,
                                           ContinuousRotationMotor as DummyContinuousRotationMotor)
 from concert.experiments.addons import Consumer, ImageWriter
+from concert.ext.ufo import GeneralBackprojectArgs, GeneralBackprojectManager
+from concert.experiments.addons import Consumer, OnlineReconstruction
 from concert.storage import DummyWalker
 from esrfconcert.experiments.laminography import ContinuousLaminography
 from esrfconcert.devices.motors.micos import (
@@ -70,9 +72,9 @@ cx = blissSessionLamino.env_dict['cx']
 cy = blissSessionLamino.env_dict['cy']
 cz = blissSessionLamino.env_dict['cz']
 
-# frondendDevice = blissSessionLamino.env_dict['frontendDevice']
-bsh1 = blissSessionLamino.env_dict['bsh1']
-bsh2 = blissSessionLamino.env_dict['bsh2']
+frontendDevice = blissSessionLamino.env_dict['frontend']
+bsh1Device = blissSessionLamino.env_dict['bsh1']
+bsh2Device = blissSessionLamino.env_dict['bsh2']
 
 machinfo = blissSessionLamino.env_dict['machinfo']
 
@@ -120,3 +122,10 @@ ex = ContinuousLaminography (walker, flat_motor, rot_motor, shutter, 10 * q.deg,
 live_preview = Consumer(ex.acquisitions, viewer)
 writer = ImageWriter(ex.acquisitions, walker)
 
+n = 2560
+args = GeneralBackprojectArgs([n // 2], [n // 2 + 0.5], ex.num_projections, overall_angle=2 * np.pi)
+args.absorptivity = True
+args.fix_nan_and_inf = True
+args.region = [0.0, 1.0, 1.0]
+manager = GeneralBackprojectManager(args)
+reco = OnlineReconstruction(ex, args, do_normalization=False, average_normalization=True)
