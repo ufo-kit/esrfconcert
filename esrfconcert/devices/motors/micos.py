@@ -80,7 +80,7 @@ class LinearMotor(base.LinearMotor, _Base):
     acceleration = Quantity(q.mm / q.s ** 2)
 
     def __init__(self, controller, index, host, port):
-        super(LinearMotor, self).__init__()
+        base.LinearMotor.__init__(self)
         _Base.__init__(self, controller, index, host, port)
 
     async def _get_position(self):
@@ -121,6 +121,32 @@ class ContinuousLinearMotor(LinearMotor, base.ContinuousLinearMotor):
         await self._set_velocity_in_steps(velocity)
 
 
+class PusherMotor(ContinuousLinearMotor):
+
+    """An implementation specifically for the pushers of LAMINO-I."""
+
+    async def is_pusher_out(self):
+        pos = await self._get_position()
+
+        return abs(pos.to(q.mm).magnitude + 0) < 0.1
+
+    async def move_pusher_out(self):
+        await self._set_position(0 * q.mm)
+
+
+class MagnetMotor(ContinuousLinearMotor):
+
+    """An implementation specifically for the pushers of LAMINO-I."""
+
+    async def is_magnet_out(self):
+        pos = await self._get_position()
+
+        return abs(pos.to(q.mm).magnitude + 0) < 0.01
+
+    async def move_magnet_out(self):
+        await self._set_position(0 * q.mm)
+
+
 class RotationMotor(base.RotationMotor, _Base):
 
     """A rotation motor implementation."""
@@ -128,7 +154,7 @@ class RotationMotor(base.RotationMotor, _Base):
     acceleration = Quantity(q.deg / q.s ** 2)
 
     def __init__(self, controller, index, host, port):
-        super(RotationMotor, self).__init__()
+        base.RotationMotor.__init__(self)
         _Base.__init__(self, controller, index, host, port)
 
     async def _get_position(self):
@@ -156,6 +182,7 @@ class RotationMotor(base.RotationMotor, _Base):
     async def _stop(self):
         await _Base._stop(self)
 
+
 class ContinuousRotationMotor(RotationMotor, base.ContinuousRotationMotor):
 
     """A continuous rotation motor implementation."""
@@ -172,3 +199,24 @@ class ContinuousRotationMotor(RotationMotor, base.ContinuousRotationMotor):
     async def _home(self):
         await self._connection.execute('{} RefMove {}'.format(self._controller, self._index + 1))
         await self['state'].wait('standby', sleep_time=self._connection.sleep_between)
+
+
+class LaminoScanningMotor(ContinuousRotationMotor):
+
+    """An implementation with specific functionality for the rotary state of LAMINO-I"""
+
+    def __init__(self, controller, index, host, port, pusher1, pusher2):
+        ContinuousRotationMotor.__init__(self, controller, index, host, port)
+        self.pusher1 = pusher1
+        self.pusher2 = pusher2
+
+    async def _set_position(self, position):
+        if await self.pusher1.is_pusher_out() and await self.pusher2.is_pusher_out():
+            position = position.to(q.deg).magnitude
+            await self._set_position_in_steps(position)
+        else:
+            raise LaminoRotException('Pushers are not out')
+
+
+class LaminoRotException(Exception):
+    pass

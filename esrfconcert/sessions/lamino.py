@@ -1,3 +1,6 @@
+from numpy import asarray_chkfinite
+import asyncio
+
 import concert
 from concert.quantities import q
 from concert.devices.cameras.uca import Camera
@@ -8,7 +11,13 @@ from concert.devices.motors.dummy import (ContinuousLinearMotor as DummyContinuo
 from concert.experiments.addons import Consumer, ImageWriter
 from concert.storage import DummyWalker
 from esrfconcert.experiments.laminography import ContinuousLaminography
-from esrfconcert.devices.motors.micos import ContinuousLinearMotor, ContinuousRotationMotor
+from esrfconcert.devices.motors.micos import (
+    ContinuousLinearMotor,
+    ContinuousRotationMotor,
+    LaminoScanningMotor,
+    PusherMotor,
+    MagnetMotor
+)
 from esrfconcert.networking.micos import SocketConnection
 from bliss.setup_globals import *
 from bliss.common import session
@@ -24,15 +33,17 @@ steps_per_degree = 26222
 
 # scanning rotation motor
 # TO CHECK: INDECES CORRECT? IN ANDREI'S SCRIPT CONSTRUCTORS ARE CALLED WITH INDEX-1?!
-lamino_rot = ContinuousRotationMotor('Sam', 4, micos_connection[0], micos_connection[1])
-lamino_tilt = ContinuousRotationMotor('Cont2', 0, micos_connection[0], micos_connection[1])
 # sample translation motors
 # puscher
-sx45_motor = ContinuousLinearMotor('Sam', 0, micos_connection[0], micos_connection[1])
-sy45_motor = ContinuousLinearMotor('Sam', 1, micos_connection[0], micos_connection[1])
+sx45 = PusherMotor('Sam', 0, micos_connection[0], micos_connection[1])
+sy45 = PusherMotor('Sam', 1, micos_connection[0], micos_connection[1])
 # magnets
-px45_motor = ContinuousLinearMotor('Sam', 2, micos_connection[0], micos_connection[1])
-py45_motor = ContinuousLinearMotor('Sam', 3, micos_connection[0], micos_connection[1])
+px45 = MagnetMotor('Sam', 2, micos_connection[0], micos_connection[1])
+py45 = MagnetMotor('Sam', 3, micos_connection[0], micos_connection[1])
+# scanning rotation motor
+# TO CHECK: INDECES CORRECT? IN ANDREI'S SCRIPT CONSTRUCTORS ARE CALLED WITH INDEX-1?!
+lamino_rot = LaminoScanningMotor('Sam', 4, micos_connection[0], micos_connection[1], sx45, sy45)
+lamino_tilt = ContinuousRotationMotor('Cont2', 0, micos_connection[0], micos_connection[1])
 
 # Camera and viewer
 camera = Camera('net')
@@ -49,14 +60,20 @@ blissConfig = static.get_config()
 blissSessionLamino =  blissConfig.get('lamino')
 blissSessionLamino.setup()
 
-lmyDevice = blissSessionLamino.env_dict['lmy']
-lmzDevice = blissSessionLamino.env_dict['lmz']
+# Microscope translation motors
+lmy = blissSessionLamino.env_dict['lmy']
+lmz = blissSessionLamino.env_dict['lmz']
+
+# Detector tanslation motors
+cx = blissSessionLamino.env_dict['cx']
+cy = blissSessionLamino.env_dict['cy']
+cz = blissSessionLamino.env_dict['cz']
 
 # frondendDevice = blissSessionLamino.env_dict['frontendDevice']
-bsh1Device = blissSessionLamino.env_dict['bsh1']
-bsh2Device = blissSessionLamino.env_dict['bsh2']
+bsh1 = blissSessionLamino.env_dict['bsh1']
+bsh2 = blissSessionLamino.env_dict['bsh2']
 
-machinfoDevice = blissSessionLamino.env_dict['machinfo']
+machinfo = blissSessionLamino.env_dict['machinfo']
 
 # 'jens' session contains:
 # - virtual motors: simmot1, simmot2
@@ -64,8 +81,32 @@ machinfoDevice = blissSessionLamino.env_dict['machinfo']
 blissSessionJens =  blissConfig.get('jens')
 blissSessionJens.setup()
 
-simmot1Device = blissSessionJens.env_dict['simmot1']
-simmot2Device = blissSessionJens.env_dict['simmot2']
+simmot1 = blissSessionJens.env_dict['simmot1']
+simmot2 = blissSessionJens.env_dict['simmot2']
+
+
+async def get_pusher_positions():
+    pos_x = await sx45._get_position()
+    pos_y = await sy45._get_position()
+
+    return (pos_x, pos_y)
+
+
+class MagnetsInException(Exception):
+    pass
+
+
+async def move_pushers_out():
+    if await px45.is_magnet_out() and await py45.is_magnet_out():
+        await sx45.move_pusher_out()
+        await sy45.move_pusher_out()
+    else:
+        raise MagnetsInException('Magnets are still in')
+
+
+async def move_magnets_out():
+    await px45.move_magnet_out()
+    await py45.move_magnet_out()
 
 
 walker = DummyWalker()
@@ -77,3 +118,4 @@ flat_motor = lamino_tilt
 ex = ContinuousLaminography (walker, flat_motor, rot_motor, shutter, 10 * q.deg, 0 * q.deg, camera)
 live_preview = Consumer(ex.acquisitions, viewer)
 writer = ImageWriter(ex.acquisitions, walker)
+
