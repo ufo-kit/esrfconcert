@@ -121,6 +121,41 @@ class ContinuousLinearMotor(LinearMotor, base.ContinuousLinearMotor):
         await self._set_velocity_in_steps(velocity)
 
 
+class PusherMotor(ContinuousLinearMotor):
+
+    """An implementation specifically for the pushers of LAMINO-I."""
+
+    async def is_pusher_out(self):
+        pos = await self._get_position()
+
+        if abs(pos.to(q.mm).magnitude + 0) < 0.1:
+            pos_string = "Pusher out"
+        else:
+            pos_string = "Pusher in"
+
+        return pos_string
+
+    async def move_pusher_out(self):
+        await self._set_position(0 * q.mm)
+
+class MagnetMotor(ContinuousLinearMotor):
+
+    """An implementation specifically for the pushers of LAMINO-I."""
+
+    async def is_magnet_out(self):
+        pos = await self._get_position()
+
+        if abs(pos.to(q.mm).magnitude + 0) < 0.1:
+            pos_string = "Magnet out"
+        else:
+            pos_string = "Magnet in"
+
+        return pos_string
+
+    async def move_magnet_out(self):
+        await self._set_position(0 * q.mm)
+
+
 class RotationMotor(base.RotationMotor, _Base):
 
     """A rotation motor implementation."""
@@ -172,3 +207,22 @@ class ContinuousRotationMotor(RotationMotor, base.ContinuousRotationMotor):
     async def _home(self):
         await self._connection.execute('{} RefMove {}'.format(self._controller, self._index + 1))
         await self['state'].wait('standby', sleep_time=self._connection.sleep_between)
+
+
+class LaminoScanningMotor(ContinuousRotationMotor):
+
+    """An implementation with specific functionality for the rotary state of LAMINO-I"""
+
+    def __init__(self, controller, index, host, port, pusher1, pusher2):
+        super(RotationMotor, self).__init__()
+        _Base.__init__(self, controller, index, host, port)
+        self.pusher1 = pusher1
+        self.pusher2 = pusher2
+
+    async def _set_position(self, position):
+
+        if self.pusher1.is_pusher_out() == "Pusher out" and self.pusher2.is_pusher_out() == "Pusher out":
+            position = position.to(q.deg).magnitude
+            await self._set_position_in_steps(position)
+        else:
+            print("Pushers are not out!")
