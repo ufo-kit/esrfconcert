@@ -45,7 +45,7 @@ px45 = MagnetMotor('Sam', 2, micos_connection[0], micos_connection[1])
 py45 = MagnetMotor('Sam', 3, micos_connection[0], micos_connection[1])
 # scanning rotation motor
 # TO CHECK: INDECES CORRECT? IN ANDREI'S SCRIPT CONSTRUCTORS ARE CALLED WITH INDEX-1?!
-lamino_rot = LaminoScanningMotor('Sam', 4, micos_connection[0], micos_connection[1], sx45_motor, sy45_motor)
+lamino_rot = LaminoScanningMotor('Sam', 4, micos_connection[0], micos_connection[1], sx45, sy45)
 lamino_tilt = ContinuousRotationMotor('Cont2', 0, micos_connection[0], micos_connection[1])
 
 # Camera and viewer
@@ -89,20 +89,27 @@ simmot2 = blissSessionJens.env_dict['simmot2']
 
 
 async def get_pusher_positions():
-    pos_x = await sx45._get_position
-    pos_y = await sy45._get_position
+    if px45.is_magnet_out() and py45.is_magnet_out()
+        pos_x = await sx45._get_position()
+        pos_y = await sy45._get_position()
 
-    return (pos_x, pos_y)
+        return (pos_x, pos_y)
+    else:
+        raise MagnetsInException(Magnets are still in)
+
+class MagnetsInException(Exception)
+    Pass
 
 
 async def move_pushers_out():
-    await sx45.move_pusher_out
-    await sy45.move_pusher_out
+    await sx45.move_pusher_out()
+    await sy45.move_pusher_out()
 
 
 async def move_magnets_out():
-    await px45.move_magnet_out
-    await py45.move_magnet_out
+    await px45.move_magnet_out()
+    await py45.move_magnet_out()
+
 
 walker = DummyWalker()
 shutter = DummyShutter()

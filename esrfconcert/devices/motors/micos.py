@@ -127,12 +127,7 @@ class PusherMotor(ContinuousLinearMotor):
     async def is_pusher_out(self):
         pos = await self._get_position()
 
-        if abs(pos.to(q.mm).magnitude + 0) < 0.1:
-            pos_string = "Pusher out"
-        else:
-            pos_string = "Pusher in"
-
-        return pos_string
+        return abs(pos.to(q.mm).magnitude + 0) < 0.1
 
     async def move_pusher_out(self):
         await self._set_position(0 * q.mm)
@@ -145,12 +140,7 @@ class MagnetMotor(ContinuousLinearMotor):
     async def is_magnet_out(self):
         pos = await self._get_position()
 
-        if abs(pos.to(q.mm).magnitude + 0) < 0.1:
-            pos_string = "Magnet out"
-        else:
-            pos_string = "Magnet in"
-
-        return pos_string
+        return abs(pos.to(q.mm).magnitude + 0) < 0.01
 
     async def move_magnet_out(self):
         await self._set_position(0 * q.mm)
@@ -220,8 +210,12 @@ class LaminoScanningMotor(ContinuousRotationMotor):
         self.pusher2 = pusher2
 
     async def _set_position(self, position):
-        if self.pusher1.is_pusher_out() == "Pusher out" and self.pusher2.is_pusher_out() == "Pusher out":
+        if self.pusher1.is_pusher_out() and self.pusher2.is_pusher_out():
             position = position.to(q.deg).magnitude
             await self._set_position_in_steps(position)
         else:
-            print("Pushers are not out!")
+            raise LaminoRotException(Pushers are not out)
+
+
+class LaminoRotException(Exception)
+    Pass
