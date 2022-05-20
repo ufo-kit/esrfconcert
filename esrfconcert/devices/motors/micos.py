@@ -59,6 +59,7 @@ class _Base(object):
 
     async def _stop(self):
         await self._connection.send('{} Stop'.format(self._controller))
+        await self['state'].wait('standby', sleep_time=self._connection.sleep_between)
 
     async def get_state(self):
         """Return the motor state."""
