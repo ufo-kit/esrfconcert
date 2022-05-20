@@ -133,6 +133,7 @@ class PusherMotor(ContinuousLinearMotor):
     async def move_pusher_out(self):
         await self._set_position(0 * q.mm)
 
+
 class MagnetMotor(ContinuousLinearMotor):
 
     """An implementation specifically for the pushers of LAMINO-I."""
@@ -210,13 +211,12 @@ class LaminoScanningMotor(ContinuousRotationMotor):
         self.pusher2 = pusher2
 
     async def _set_position(self, position):
-
-        if self.pusher1.is_pusher_out() and self.pusher2.is_pusher_out():
+        if await self.pusher1.is_pusher_out() and await self.pusher2.is_pusher_out():
             position = position.to(q.deg).magnitude
             await self._set_position_in_steps(position)
         else:
-            raise LaminoRotException(Pushers are not out)
+            raise LaminoRotException('Pushers are not out')
 
 
-class LaminoRotException(Exception)
-    Pass
+class LaminoRotException(Exception):
+    pass
