@@ -20,7 +20,6 @@ from esrfconcert.devices.motors.micos import (
     PusherMotor,
     MagnetMotor
 )
-from esrfconcert.motions import (move_sample_x, move_sample_y)
 from esrfconcert.networking.micos import SocketConnection
 from bliss.setup_globals import *
 from bliss.common import session
@@ -89,21 +88,22 @@ simmot2 = blissSessionJens.env_dict['simmot2']
 
 
 async def get_pusher_positions():
-    if px45.is_magnet_out() and py45.is_magnet_out()
-        pos_x = await sx45._get_position()
-        pos_y = await sy45._get_position()
+    pos_x = await sx45._get_position()
+    pos_y = await sy45._get_position()
 
-        return (pos_x, pos_y)
-    else:
-        raise MagnetsInException(Magnets are still in)
+    return (pos_x, pos_y)
 
-class MagnetsInException(Exception)
-    Pass
+
+class MagnetsInException(Exception):
+    pass
 
 
 async def move_pushers_out():
-    await sx45.move_pusher_out()
-    await sy45.move_pusher_out()
+    if await px45.is_magnet_out() and await py45.is_magnet_out():
+        await sx45.move_pusher_out()
+        await sy45.move_pusher_out()
+    else:
+        raise MagnetsInException('Magnets are still in')
 
 
 async def move_magnets_out():
