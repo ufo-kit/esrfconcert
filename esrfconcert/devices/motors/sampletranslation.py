@@ -10,6 +10,7 @@
 
 import asyncio
 import logging
+import numpy as np
 import time
 
 from concert.base import Parameter, Quantity
@@ -17,17 +18,17 @@ from concert.coroutines.base import background, start
 from concert.quantities import q
 
 # Define angle between x_beamline and y_beamline
-alpha = 90 * q.deg
+ALPHA = 90 * q.deg
 # Define angle between x_pusher and y_pusher
-beta = 90 * q.deg
+BETA = 90 * q.deg
 # Define angle between x_beamline and x_pusher
-gamma = 135 * q.deg
+GAMMA = 135 * q.deg
 
 
 async def move_sample_x(distance, rmx, rmy):
 
-    dist_x45push = distance / cos(gamma)
-    dist_y45push = distance / cos(gamma - alpha)
+    dist_x45push = distance / np.cos(GAMMA)
+    dist_y45push = distance / np.cos(GAMMA - ALPHA)
 
     await rmx.move(dist_x45push)
     await rmy.move(dist_y45push)
@@ -35,8 +36,8 @@ async def move_sample_x(distance, rmx, rmy):
 
 async def move_sample_y(distance, rmx, rmy):
 
-    dist_x45push = distance / cos(gamma + beta)
-    dist_y45push = distance / cos(gamma + beta - alpha)
+    dist_x45push = distance / np.cos(GAMMA + BETA)
+    dist_y45push = distance / np.cos(GAMMA + BETA - ALPHA)
 
     await rmx.move(dist_x45push)
     await rmy.move(dist_y45push)
