@@ -20,6 +20,7 @@ from esrfconcert.devices.motors.micos import (
     PusherMotor,
     MagnetMotor
 )
+from esrfconcert.devices.motors.sampletranslation import (move_sample_x, move_sample_y)
 from esrfconcert.networking.micos import SocketConnection
 from bliss.setup_globals import *
 from bliss.common import session
