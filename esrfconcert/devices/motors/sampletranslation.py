@@ -28,19 +28,17 @@ GAMMA = 135 * q.deg
 async def move_sample_x(distance, rmx, rmy):
 
     dist_x45push = distance / np.cos(GAMMA)
-    dist_y45push = distance / np.cos(GAMMA - ALPHA)
+    dist_y45push = distance / np.cos(GAMMA + BETA)
 
-    await rmx.move(dist_x45push)
-    await rmy.move(dist_y45push)
+    await asyncio.gather(rmx.move(dist_x45push), rmy.move(dist_y45push))
 
 
 async def move_sample_y(distance, rmx, rmy):
 
-    dist_x45push = distance / np.cos(GAMMA + BETA)
+    dist_x45push = distance / np.cos(GAMMA - ALPHA)
     dist_y45push = distance / np.cos(GAMMA + BETA - ALPHA)
 
-    await rmx.move(dist_x45push)
-    await rmy.move(dist_y45push)
+    await asyncio.gather(rmx.move(dist_x45push), rmy.move(dist_y45push))
 
 
 """ To Do or To Consider: 
