@@ -81,7 +81,7 @@ class LinearMotor(base.LinearMotor, _Base):
     acceleration = Quantity(q.mm / q.s ** 2)
 
     def __init__(self, controller, index, host, port):
-        super(LinearMotor, self).__init__()
+        base.LinearMotor.__init__(self)
         _Base.__init__(self, controller, index, host, port)
 
     async def _get_position(self):
@@ -155,7 +155,7 @@ class RotationMotor(base.RotationMotor, _Base):
     acceleration = Quantity(q.deg / q.s ** 2)
 
     def __init__(self, controller, index, host, port):
-        super(RotationMotor, self).__init__()
+        base.RotationMotor.__init__(self)
         _Base.__init__(self, controller, index, host, port)
 
     async def _get_position(self):
@@ -183,6 +183,7 @@ class RotationMotor(base.RotationMotor, _Base):
     async def _stop(self):
         await _Base._stop(self)
 
+
 class ContinuousRotationMotor(RotationMotor, base.ContinuousRotationMotor):
 
     """A continuous rotation motor implementation."""
@@ -206,8 +207,7 @@ class LaminoScanningMotor(ContinuousRotationMotor):
     """An implementation with specific functionality for the rotary state of LAMINO-I"""
 
     def __init__(self, controller, index, host, port, pusher1, pusher2):
-        super(RotationMotor, self).__init__()
-        _Base.__init__(self, controller, index, host, port)
+        ContinuousRotationMotor.__init__(self, controller, index, host, port)
         self.pusher1 = pusher1
         self.pusher2 = pusher2
 
