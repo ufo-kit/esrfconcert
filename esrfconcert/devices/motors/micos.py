@@ -1,7 +1,5 @@
 # TODO: do we still need this?
 """Micos motors from ANKA laminograph at ID19 at ESRF."""
-
-import asyncio
 from concert.base import StateError, Quantity
 from concert.devices.motors import base
 from concert.quantities import q
@@ -27,7 +25,7 @@ class _Base(object):
 
     async def _set_position_in_steps(self, position):
         msg = await self._connection.execute('{} AxisAbs {} {}'.format(self._controller,
-                                                                 self._index + 1, position))
+                                                                       self._index + 1, position))
         if 'Movement not possible due to soft limits' in msg:
             raise StateError('You cannot move beyond soft limits')
 
