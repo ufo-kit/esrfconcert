@@ -1,17 +1,21 @@
 from numpy import asarray_chkfinite
 import asyncio
+import logging
 import numpy as np
+
 import concert
 from concert.quantities import q
 from concert.devices.cameras.uca import Camera
+from concert.devices.cameras.pco import Timestamp
 from concert.ext.viewers import PyplotImageViewer
 from concert.devices.shutters.dummy import Shutter as DummyShutter
+from esrfconcert.devices.shutters.bliss import Shutter as BlissShutter
 from concert.devices.motors.dummy import (ContinuousLinearMotor as DummyContinuousLinearMotor,
                                           ContinuousRotationMotor as DummyContinuousRotationMotor)
 from concert.experiments.addons import Consumer, ImageWriter
+from concert.storage import DummyWalker, DirectoryWalker
 from concert.ext.ufo import GeneralBackprojectArgs, GeneralBackprojectManager
 from concert.experiments.addons import Consumer, OnlineReconstruction
-from concert.storage import DummyWalker
 from esrfconcert.experiments.laminography import ContinuousLaminography
 from esrfconcert.devices.motors.micos import (
     ContinuousLinearMotor,
@@ -26,6 +30,10 @@ from bliss.setup_globals import *
 from bliss.common import session
 from bliss.config import static
 from bliss.shell import standard
+
+
+LOG = logging.getLogger(__name__)
+
 
 # Set parameters
 # Micos Motion Server:
@@ -50,7 +58,8 @@ lamino_tilt = ContinuousRotationMotor('Cont2', 0, micos_connection[0], micos_con
 
 # Camera and viewer
 camera = Camera('net')
-viewer = PyplotImageViewer(show_refresh_rate=True, force=False)
+camera.timestamp_mode = camera.uca.enum_values.timestamp_mode.BOTH
+viewer = PyplotImageViewer(show_refresh_rate=False, force=False)
 
 # Bliss beamline components
 
@@ -72,9 +81,10 @@ cx = blissSessionLamino.env_dict['cx']
 cy = blissSessionLamino.env_dict['cy']
 cz = blissSessionLamino.env_dict['cz']
 
-frontendDevice = blissSessionLamino.env_dict['frontend']
-bsh1Device = blissSessionLamino.env_dict['bsh1']
-bsh2Device = blissSessionLamino.env_dict['bsh2']
+# frondendDevice = blissSessionLamino.env_dict['frontendDevice']
+bsh1 = BlissShutter(blissSessionLamino.env_dict['bsh1'])
+bsh2 = BlissShutter(blissSessionLamino.env_dict['bsh2'])
+fast_shutter = BlissShutter(blissSessionLamino.env_dict['exp_shutter'])
 
 machinfo = blissSessionLamino.env_dict['machinfo']
 
@@ -112,16 +122,47 @@ async def move_magnets_out():
     await py45.move_magnet_out()
 
 
-walker = DummyWalker()
+def get_timestamp_diffs(images):
+    times = np.array([Timestamp(image).time for image in images])
+    diffs = [(times[i + 1] - times[i]).total_seconds() for i in range(len(images) - 1)]
+
+    return np.array(diffs)
+
+
+def are_timestamps_ok(images):
+    numbers = np.array([Timestamp(image).number for image in images])
+    return np.all(numbers[1:] - numbers[:-1] == 1)
+
+
+# Dummy devices
+dummy_walker = DummyWalker()
 shutter = DummyShutter()
 # flat_motor = DummyContinuousLinearMotor()
 # rot_motor = DummyContinuousRotationMotor()
+
+# Real deal
+walker = DirectoryWalker(
+    bytes_per_file=2**40,
+    root='/mnt/multipath-shares/data/id19/laminography/2022-05-lamino-commissioning',
+    log=LOG,
+    log_name='experiment.log'
+)
 rot_motor = lamino_rot
 flat_motor = lamino_tilt
-ex = ContinuousLaminography (walker, flat_motor, rot_motor, shutter, 10 * q.deg, 0 * q.deg, camera)
+ex = ContinuousLaminography (
+    walker,
+    flat_motor,
+    rot_motor,
+    fast_shutter,
+    1 * q.deg,
+    0.5 * q.deg,
+    camera,
+    num_projections=360
+)
 live_preview = Consumer(ex.acquisitions, viewer)
 writer = ImageWriter(ex.acquisitions, walker)
 
+# Online reco setup
 n = 2560
 args = GeneralBackprojectArgs([n // 2], [n // 2 + 0.5], ex.num_projections, overall_angle=2 * np.pi)
 args.absorptivity = True
