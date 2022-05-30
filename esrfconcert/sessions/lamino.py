@@ -1,3 +1,26 @@
+"""
+Online reconstruction
+---------------------
+
+Usage:
+    viewer.show(reco.manager.volume[0])  # Show first slice (defined by args.region and args.center_position_z)
+    reco.manager.num_received_projections  # Display how many projections have been processed
+
+    # Optimize lamino angle (similar for other parameters, all angles are in radians in concert!)
+    args.z_parameter = 'axis-angle-x'
+    # e.g. search +/- 5 degrees
+    args.region = [args.axis_angle_x[0] - np.deg2rad(5), args.axis_angle_x[0] + np.deg2rad(5), np.deg2rad(1)]
+    # Use the middle slice
+    args.z = 0
+    # Re-backproject
+    await reco.manager.backproject(async_generage(reco.manager.projections))
+    viewer.show(reco.manager.volume[0])
+
+    # Go back to reconstructing slices
+    args.z_parameter = 'z'
+    args.region = [0.0, 1.0, 0.0] # Do not forget the decimal points!
+    await reco.manager.backproject(async_generage(reco.manager.projections))
+"""
 from numpy import asarray_chkfinite
 import asyncio
 import logging
@@ -5,6 +28,7 @@ import numpy as np
 
 import concert
 from concert.quantities import q
+from concert.coroutines.base import async_generate
 from concert.devices.cameras.uca import Camera
 from concert.devices.cameras.pco import Timestamp
 from concert.ext.viewers import PyplotImageViewer
