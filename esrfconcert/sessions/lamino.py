@@ -45,8 +45,7 @@ from esrfconcert.devices.motors.micos import (
     ContinuousLinearMotor,
     ContinuousRotationMotor,
     LaminoScanningMotor,
-    PusherMotor,
-    MagnetMotor
+    SampleManipulationMotor
 )
 from esrfconcert.devices.motors.sampletranslation import (move_sample_x, move_sample_y)
 from esrfconcert.networking.micos import SocketConnection
@@ -70,11 +69,15 @@ steps_per_degree = 26222
 # TO CHECK: INDECES CORRECT? IN ANDREI'S SCRIPT CONSTRUCTORS ARE CALLED WITH INDEX-1?!
 # sample translation motors
 # puscher
-sx45 = PusherMotor('Sam', 0, micos_connection[0], micos_connection[1])
-sy45 = PusherMotor('Sam', 1, micos_connection[0], micos_connection[1])
+sx45 = SampleManipulationMotor('Sam', 0, micos_connection[0], micos_connection[1],
+                               in_position=1 * q.mm, out_position=0 * q.mm)
+sy45 = SampleManipulationMotor('Sam', 1, micos_connection[0], micos_connection[1],
+                               in_position=1 * q.mm, out_position=0 * q.mm)
 # magnets
-px45 = MagnetMotor('Sam', 2, micos_connection[0], micos_connection[1])
-py45 = MagnetMotor('Sam', 3, micos_connection[0], micos_connection[1])
+px45 = SampleManipulationMotor('Sam', 2, micos_connection[0], micos_connection[1],
+                               in_position=-0.2 * q.mm, out_position=-1.2 * q.mm)
+py45 = SampleManipulationMotor('Sam', 3, micos_connection[0], micos_connection[1],
+                               in_position=1 * q.mm, out_position=0 * q.mm)
 # scanning rotation motor
 # TO CHECK: INDECES CORRECT? IN ANDREI'S SCRIPT CONSTRUCTORS ARE CALLED WITH INDEX-1?!
 lamino_rot = LaminoScanningMotor('Sam', 4, micos_connection[0], micos_connection[1], sx45, sy45)
@@ -134,16 +137,16 @@ class MagnetsInException(Exception):
 
 
 async def move_pushers_out():
-    if await px45.is_magnet_out() and await py45.is_magnet_out():
-        await sx45.move_pusher_out()
-        await sy45.move_pusher_out()
+    if await px45.state() == 'out' and await py45.state() == 'out':
+        await sx45.move_out()
+        await sy45.move_out()
     else:
         raise MagnetsInException('Magnets are still in')
 
 
 async def move_magnets_out():
-    await px45.move_magnet_out()
-    await py45.move_magnet_out()
+    await px45.move_out()
+    await py45.move_out()
 
 
 def get_timestamp_diffs(images):
