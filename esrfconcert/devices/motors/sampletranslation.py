@@ -25,20 +25,59 @@ BETA = 90 * q.deg
 GAMMA = 135 * q.deg
 
 
-async def move_sample_x(distance, rmx, rmy):
+async def _move_sample(
+    rel_pos,
+    pseudo_motor,
+    sx45,
+    sy45,
+    px45,
+    py45,
+    lamino_tilt,
+    offset=0 * q.deg
+):
+    # check if magnets are out: Sample should be only moved if magnets are in!
+    if await px45.is_magnet_out() or await py45.is_magnet_out():
+        raise RuntimeError('Magnets are not in')
+    else:
+        # get current positions
+        tilt_pos = await lamino_tilt.get_position()
+        sx45_pos = await sx45.get_position()
+        sy45_pos = await sy45.get_position()
 
-    dist_x45push = distance / np.cos(GAMMA)
-    dist_y45push = distance / np.cos(GAMMA + BETA)
+        # calculate target positions, x/y controlled by offset
+        sx45_target = sx45_pos + rel_pos / np.cos(GAMMA - offset)
+        sy45_target = sy45_pos + rel_pos / np.cos(GAMMA + BETA - offset)
 
-    await asyncio.gather(rmx.move(dist_x45push), rmy.move(dist_y45push))
+        await pseudo_motor.set_position([
+            tilt_pos.to(q.deg).magnitude,
+            sx45_target.to(q.mm).magnitude,
+            sy45_target.to(q.mm).magnitude
+        ])
 
 
-async def move_sample_y(distance, rmx, rmy):
+async def move_sample_x(
+    rel_pos,
+    pseudo_motor,
+    sx45,
+    sy45,
+    px45,
+    py45,
+    lamino_tilt
+):
+    await _move_sample(rel_pos, pseudo_motor, sx45, sy45, px45, py45, lamino_tilt)
 
-    dist_x45push = distance / np.cos(GAMMA - ALPHA)
-    dist_y45push = distance / np.cos(GAMMA + BETA - ALPHA)
 
-    await asyncio.gather(rmx.move(dist_x45push), rmy.move(dist_y45push))
+async def move_sample_y(
+    rel_pos,
+    pseudo_motor,
+    sx45,
+    sy45,
+    px45,
+    py45,
+    lamino_tilt,
+    offset=0 * q.deg
+):
+    await _move_sample(rel_pos, pseudo_motor, sx45, sy45, px45, py45, lamino_tilt, offset=ALPHA)
 
 
 """ To Do or To Consider: 
