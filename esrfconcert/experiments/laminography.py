@@ -123,13 +123,15 @@ class ContinuousLaminography(ContinuousTomography):
             motion_task = self._tomography_motor.set_position(end_pos)
             LOG.debug("Waiting %s for acceleration", margin_time)
             await asyncio.sleep(margin_time.to(q.s).magnitude)
+            stop_reported = False
             async with self._camera.recording():
                 LOG.debug("Camera started recording with scanning motor at %s",
                           await self._tomography_motor.get_position())
                 for i in range(self._num_projections):
                     yield await self._camera.grab()
-                    if motion_task.done():
+                    if not stop_reported and motion_task.done():
                         LOG.debug("Motion task done when grabbing projection %d", i)
+                        stop_reported = True
                 LOG.debug("Grabbing frames completed with scanning motor at %s",
                           await self._tomography_motor.get_position())
                 await motion_task
