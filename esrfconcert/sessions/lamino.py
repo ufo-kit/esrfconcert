@@ -45,6 +45,7 @@ from esrfconcert.devices.motors.micos import (
     ContinuousLinearMotor,
     ContinuousRotationMotor,
     LaminoScanningMotor,
+    PseudoMotor,
     SampleManipulationMotor
 )
 from esrfconcert.devices.motors.sampletranslation import (move_sample_x, move_sample_y)
@@ -82,11 +83,7 @@ py45 = SampleManipulationMotor('Sam', 3, micos_connection[0], micos_connection[1
 # TO CHECK: INDECES CORRECT? IN ANDREI'S SCRIPT CONSTRUCTORS ARE CALLED WITH INDEX-1?!
 lamino_rot = LaminoScanningMotor('Sam', 4, micos_connection[0], micos_connection[1], sx45, sy45)
 lamino_tilt = ContinuousRotationMotor('Cont2', 0, micos_connection[0], micos_connection[1])
-
-# Camera and viewer
-camera = Camera('net')
-camera.timestamp_mode = camera.uca.enum_values.timestamp_mode.BOTH
-viewer = PyplotImageViewer(show_refresh_rate=False, force=False)
+pseudo_motor = PseudoMotor('Cont2', micos_connection[0], micos_connection[1])
 
 # Bliss beamline components
 
@@ -137,9 +134,23 @@ class MagnetsInException(Exception):
 
 
 async def move_pushers_out():
-    if await px45.state() == 'out' and await py45.state() == 'out':
-        await sx45.move_out()
-        await sy45.move_out()
+    if await px45.get_state() != 'out':
+        await px45.move_out()
+    if await py45.get_state() != 'out':
+        await py45.move_out()
+
+    await sx45['position'].stash()
+    await sy45['position'].stash()
+    await sx45.move_out()
+    await sy45.move_out()
+
+
+async def move_pushers_in():
+    if await px45.get_state() == 'out' and await py45.get_state() == 'out':
+        await sx45['position'].restore()
+        await sy45['position'].restore()
+        await px45.move_in()
+        await py45.move_in()
     else:
         raise MagnetsInException('Magnets are still in')
 
@@ -161,6 +172,37 @@ def are_timestamps_ok(images):
     return np.all(numbers[1:] - numbers[:-1] == 1)
 
 
+async def set_frame_rate(fps):
+    await camera.set_frame_rate(fps)
+    await camera.set_exposure_time(1 / fps - 10 * q.ms)
+    await camera.start_recording()
+    await camera.stop_recording()
+    print('FPS={}, exp={}'.format(await camera.get_frame_rate(), await camera.get_exposure_time()))
+
+
+async def prepare(self):
+    if await sx45.get_state() != 'out' or await sy45.get_state() != 'out':
+        await move_pushers_out()
+    self.log.info('Camera settings:')
+    self.log.info(await camera.info_table)
+    self.log.info(await sx45.info_table)
+    self.log.info(await sy45.info_table)
+    self.log.info(await px45.info_table)
+    self.log.info(await py45.info_table)
+    if await bsh1.get_state() != 'open':
+        await bsh1.open()
+    if await bsh2.get_state() != 'open':
+        await bsh2.open()
+
+
+viewer = PyplotImageViewer(show_refresh_rate=False, force=False)
+walker = DirectoryWalker(
+    bytes_per_file=2**40,
+    root='/mnt/multipath-shares/data/id19/laminography/2022-05-lamino-commissioning',
+    log=LOG,
+    log_name='experiment.log'
+)
+
 # Dummy devices
 dummy_walker = DummyWalker()
 shutter = DummyShutter()
@@ -168,14 +210,12 @@ shutter = DummyShutter()
 # rot_motor = DummyContinuousRotationMotor()
 
 # Real deal
-walker = DirectoryWalker(
-    bytes_per_file=2**40,
-    root='/mnt/multipath-shares/data/id19/laminography/2022-05-lamino-commissioning',
-    log=LOG,
-    log_name='experiment.log'
-)
+camera = Camera('net')
+camera.timestamp_mode = camera.uca.enum_values.timestamp_mode.BOTH
+camera.trigger_source = 'AUTO'
 rot_motor = lamino_rot
 flat_motor = lamino_tilt
+ContinuousLaminography.prepare = prepare
 ex = ContinuousLaminography (
     walker,
     flat_motor,
@@ -184,7 +224,7 @@ ex = ContinuousLaminography (
     1 * q.deg,
     0.5 * q.deg,
     camera,
-    num_projections=360
+    num_projections=3601
 )
 live_preview = Consumer(ex.acquisitions, viewer)
 writer = ImageWriter(ex.acquisitions, walker)

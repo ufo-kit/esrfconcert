@@ -267,6 +267,8 @@ class ContinuousLaminography(SteppedLaminography):
                           await self._scanning_motor.get_position())
                 for i in range(self._num_projections):
                     yield await self._camera.grab()
+                    if motion_task.done():
+                        LOG.debug("Motion task done when grabbing projection %d", i)
                 LOG.debug("Grabbing frames completed with scanning motor at %s",
                           await self._scanning_motor.get_position())
                 await motion_task
