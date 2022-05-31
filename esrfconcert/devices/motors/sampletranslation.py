@@ -36,7 +36,7 @@ async def _move_sample(
     offset=0 * q.deg
 ):
     # check if magnets are out: Sample should be only moved if magnets are in!
-    if await px45.state() 'out' or await py45.state() == 'out':
+    if await px45.state() == 'out' or await py45.state() == 'out':
         raise RuntimeError('Magnets are not in')
     else:
         # get current positions
