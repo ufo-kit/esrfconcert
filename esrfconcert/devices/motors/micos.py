@@ -1,6 +1,8 @@
 # TODO: do we still need this?
 """Micos motors from ANKA laminograph at ID19 at ESRF."""
-from concert.base import StateError, Quantity
+
+import asyncio
+from concert.base import StateError, Quantity, Parameter, Parameterizable
 from concert.devices.motors import base
 from concert.quantities import q
 from esrfconcert.networking.micos import SocketConnection
@@ -17,9 +19,14 @@ class _Base(object):
         self._index = index
         self._connection = SocketConnection(host, port)
 
-    async def _get_position_in_steps(self):
+    async def _get_positions_in_steps(self):
         pos = await self._connection.execute('{} Crds ?'.format(self._controller))
         split = pos.split('{} Crds '.format(self._controller))[1].split()
+
+        return split
+
+    async def _get_position_in_steps(self):
+        split = await self._get_positions_in_steps()
 
         return float(split[self._index])
 
@@ -215,6 +222,29 @@ class LaminoScanningMotor(ContinuousRotationMotor):
             await self._set_position_in_steps(position)
         else:
             raise LaminoRotException('Pushers are not out')
+
+
+class PseudoMotor(Parameterizable, _Base):
+
+    position = Parameter(help='Position vector for several axes')
+
+    def __init__(self, controller, host, port):
+        _Base.__init__(self, controller, None, host, port)
+        Parameterizable.__init__(self)
+
+    async def _set_position(self, positions):
+        str_positions = ' '.join([str(pos) for pos in positions])
+        msg = self._connection.execute('{} MoveAbs {}'.format(self._controller, str_positions))
+
+        if 'Movement not possible due to soft limits' in msg:
+            raise StateError('You cannot move beyond soft limits')
+
+        await self['state'].wait('standby', sleep_time=self._connection.sleep_between)
+
+    async def _get_position(self):
+        str_positions = self._get_positions_in_steps()
+
+        return [float(pos) for pos in str_positions]
 
 
 class LaminoRotException(Exception):
