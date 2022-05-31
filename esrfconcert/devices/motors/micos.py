@@ -127,30 +127,36 @@ class ContinuousLinearMotor(LinearMotor, base.ContinuousLinearMotor):
         await self._set_velocity_in_steps(velocity)
 
 
-class PusherMotor(ContinuousLinearMotor):
+class SampleManipulationMotor(ContinuousLinearMotor):
 
-    """An implementation specifically for the pushers of LAMINO-I."""
+    """An implementation specifically for pushers and magnets of LAMINO-I."""
 
-    async def is_pusher_out(self):
+    def __init__(self, controller, index, host, port, in_position, out_position, precision=0.1):
+        super().__init__(controller, index, host, port)
+        self._in_position = in_position
+        self._out_position = out_position
+        self._precision = precision
+
+    async def _is_in_position(self, desired_position):
         pos = await self._get_position()
 
-        return abs(pos.to(q.mm).magnitude + 0) < 0.1
+        return abs((pos - desired_position).to(q.mm).magnitude) < self._precision
 
-    async def move_pusher_out(self):
-        await self._set_position(0 * q.mm)
+    async def _get_state(self):
+        state = await super()._get_state()
+        if state == 'standby':
+            if await self._is_in_position(self._in_position):
+                return 'in'
+            elif await self._is_in_position(self._out_position):
+                return 'out'
 
+        return state
 
-class MagnetMotor(ContinuousLinearMotor):
+    async def move_in(self):
+        await self._set_position(self._in_position)
 
-    """An implementation specifically for the pushers of LAMINO-I."""
-
-    async def is_magnet_out(self):
-        pos = await self._get_position()
-
-        return abs(pos.to(q.mm).magnitude + 0) < 0.01
-
-    async def move_magnet_out(self):
-        await self._set_position(0 * q.mm)
+    async def move_out(self):
+        await self._set_position(self._out_position)
 
 
 class RotationMotor(base.RotationMotor, _Base):
@@ -217,7 +223,7 @@ class LaminoScanningMotor(ContinuousRotationMotor):
         self.pusher2 = pusher2
 
     async def _set_position(self, position):
-        if await self.pusher1.is_pusher_out() and await self.pusher2.is_pusher_out():
+        if await self.pusher1.state() == 'out' and await self.pusher2.state() == 'out':
             position = position.to(q.deg).magnitude
             await self._set_position_in_steps(position)
         else:
