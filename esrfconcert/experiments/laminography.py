@@ -228,7 +228,7 @@ class ContinuousLaminography(SteppedLaminography):
         bpp = await self._camera.get_sensor_bitdepth() // 8
         # lid193 has 48 GB memory, let's use maximum 40
         max_buffered_images = int(40 * 2 ** 30 / (width * height * bpp))
-        await self._camera.set_num_buffers(min(self._num_projections, max_buffered_images))
+        await self._camera.set_num_buffers(min(2 * self._num_projections, max_buffered_images))
         await self._camera.set_buffered(True)
         LOG.info('Setting num_buffers to %s', await self._camera.get_num_buffers())
         await self._scanning_motor.set_position(await self.get_start_angle())
