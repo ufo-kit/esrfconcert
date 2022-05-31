@@ -2,7 +2,7 @@
 """Micos motors from ANKA laminograph at ID19 at ESRF."""
 
 import asyncio
-from concert.base import StateError, Quantity, Parameter, Parameterizable
+from concert.base import State, StateError, Quantity, Parameter, Parameterizable, check
 from concert.devices.motors import base
 from concert.quantities import q
 from esrfconcert.networking.micos import SocketConnection
@@ -30,13 +30,13 @@ class _Base(object):
 
         return float(split[self._index])
 
-    async def _set_position_in_steps(self, position):
+    async def _set_position_in_steps(self, position, wait_for='standby'):
         msg = await self._connection.execute('{} AxisAbs {} {}'.format(self._controller,
                                                                        self._index + 1, position))
         if 'Movement not possible due to soft limits' in msg:
             raise StateError('You cannot move beyond soft limits')
 
-        await self['state'].wait('standby', sleep_time=self._connection.sleep_between)
+        await self['state'].wait(wait_for, sleep_time=self._connection.sleep_between)
 
     async def _get_acceleration_unitless(self):
         acceleration = await self._connection.execute('{} Accel ?'.format(self._controller))
@@ -92,9 +92,9 @@ class LinearMotor(base.LinearMotor, _Base):
     async def _get_position(self):
         return await self._get_position_in_steps() * q.mm
 
-    async def _set_position(self, position):
+    async def _set_position(self, position, wait_for='standby'):
         position = position.to(q.mm).magnitude
-        await self._set_position_in_steps(position)
+        await self._set_position_in_steps(position, wait_for=wait_for)
 
     async def _get_acceleration(self):
         return await self._get_acceleration_unitless() * q.mm / q.s ** 2
@@ -136,6 +136,10 @@ class SampleManipulationMotor(ContinuousLinearMotor):
         self._in_position = in_position
         self._out_position = out_position
         self._precision = precision
+        self['position']._parameter.check = check(
+            source=['hard-limit', 'standby', 'in', 'out'],
+            target=['hard-limit', 'standby', 'in', 'out']
+        )
 
     async def _is_in_position(self, desired_position):
         pos = await self._get_position()
@@ -153,10 +157,10 @@ class SampleManipulationMotor(ContinuousLinearMotor):
         return state
 
     async def move_in(self):
-        await self._set_position(self._in_position)
+        await self._set_position(self._in_position, wait_for='in')
 
     async def move_out(self):
-        await self._set_position(self._out_position)
+        await self._set_position(self._out_position, wait_for='out')
 
 
 class RotationMotor(base.RotationMotor, _Base):
@@ -223,7 +227,7 @@ class LaminoScanningMotor(ContinuousRotationMotor):
         self.pusher2 = pusher2
 
     async def _set_position(self, position):
-        if await self.pusher1.state() == 'out' and await self.pusher2.state() == 'out':
+        if await self.pusher1.get_state() == 'out' and await self.pusher2.get_state() == 'out':
             position = position.to(q.deg).magnitude
             await self._set_position_in_steps(position)
         else:
@@ -233,21 +237,22 @@ class LaminoScanningMotor(ContinuousRotationMotor):
 class PseudoMotor(Parameterizable, _Base):
 
     position = Parameter(help='Position vector for several axes')
+    state = State(default='standby')
 
     def __init__(self, controller, host, port):
         _Base.__init__(self, controller, None, host, port)
         Parameterizable.__init__(self)
 
-    async def _set_position(self, positions):
+    async def set_position(self, positions):
         str_positions = ' '.join([str(pos) for pos in positions])
-        msg = self._connection.execute('{} MoveAbs {}'.format(self._controller, str_positions))
+        msg = await self._connection.execute('{} MoveAbs {}'.format(self._controller, str_positions))
 
         if 'Movement not possible due to soft limits' in msg:
             raise StateError('You cannot move beyond soft limits')
 
         await self['state'].wait('standby', sleep_time=self._connection.sleep_between)
 
-    async def _get_position(self):
+    async def get_position(self):
         str_positions = self._get_positions_in_steps()
 
         return [float(pos) for pos in str_positions]
