@@ -13,13 +13,13 @@ Usage:
     # Use the middle slice
     args.z = 0
     # Re-backproject
-    await reco.manager.backproject(async_generage(reco.manager.projections))
+    await reco.manager.backproject(async_generatre(reco.manager.projections))
     viewer.show(reco.manager.volume[0])
 
     # Go back to reconstructing slices
     args.z_parameter = 'z'
     args.region = [0.0, 1.0, 0.0] # Do not forget the decimal points!
-    await reco.manager.backproject(async_generage(reco.manager.projections))
+    await reco.manager.backproject(async_generate(reco.manager.projections))
 """
 from numpy import asarray_chkfinite
 import asyncio
@@ -84,6 +84,9 @@ py45 = SampleManipulationMotor('Sam', 3, micos_connection[0], micos_connection[1
 lamino_rot = LaminoScanningMotor('Sam', 4, micos_connection[0], micos_connection[1], sx45, sy45)
 lamino_tilt = ContinuousRotationMotor('Cont2', 0, micos_connection[0], micos_connection[1])
 pseudo_motor = PseudoMotor('Cont2', micos_connection[0], micos_connection[1])
+
+
+lamino_tilt['position'].upper = 30*q.deg
 
 # Bliss beamline components
 
@@ -198,7 +201,8 @@ async def prepare(self):
 viewer = PyplotImageViewer(show_refresh_rate=False, force=False)
 walker = DirectoryWalker(
     bytes_per_file=2**40,
-    root='/mnt/multipath-shares/data/id19/laminography/2022-05-lamino-commissioning',
+    #root='/mnt/multipath-shares/data/id19/laminography/2022-05-lamino-commissioning',
+    root='/mnt/multipath-shares/data/visitor/blc13800/id19/',
     log=LOG,
     log_name='experiment.log'
 )
@@ -221,19 +225,23 @@ ex = ContinuousLaminography (
     flat_motor,
     rot_motor,
     fast_shutter,
-    1 * q.deg,
+    29.9 * q.deg,
     0.5 * q.deg,
     camera,
-    num_projections=3601
+    num_projections=3701
 )
+
+ex.start_angle=-90*q.deg
+ex.angular_range=370*q.deg
+
 live_preview = Consumer(ex.acquisitions, viewer)
 writer = ImageWriter(ex.acquisitions, walker)
 
 # Online reco setup
-n = 2560
-args = GeneralBackprojectArgs([n // 2], [n // 2 + 0.5], ex.num_projections, overall_angle=2 * np.pi)
-args.absorptivity = True
-args.fix_nan_and_inf = True
-args.region = [0.0, 1.0, 1.0]
-manager = GeneralBackprojectManager(args)
-reco = OnlineReconstruction(ex, args, do_normalization=False, average_normalization=True)
+#n = 2560
+#args = GeneralBackprojectArgs([n // 2], [n // 2 + 0.5], ex.num_projections, overall_angle=2 * np.pi)
+#args.absorptivity = True
+#args.fix_nan_and_inf = True
+#args.region = [0.0, 1.0, 1.0]
+#manager = GeneralBackprojectManager(args)
+#reco = OnlineReconstruction(ex, args, do_normalization=False, average_normalization=True)
