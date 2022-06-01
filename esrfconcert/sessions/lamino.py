@@ -32,6 +32,7 @@ from concert.coroutines.base import async_generate
 from concert.devices.cameras.uca import Camera
 from concert.devices.cameras.pco import Timestamp
 from concert.ext.viewers import PyplotImageViewer
+from concert.readers import TiffSequenceReader
 from concert.devices.shutters.dummy import Shutter as DummyShutter
 from esrfconcert.devices.shutters.bliss import Shutter as BlissShutter
 from concert.devices.motors.dummy import (ContinuousLinearMotor as DummyContinuousLinearMotor,
@@ -163,15 +164,26 @@ async def move_magnets_out():
     await py45.move_out()
 
 
-def get_timestamp_diffs(images):
-    times = np.array([Timestamp(image).time for image in images])
-    diffs = [(times[i + 1] - times[i]).total_seconds() for i in range(len(images) - 1)]
+def get_timestamps(images=None, path=None):
+    if images is None and path is None:
+        raise ValueError("Only one of images or path may be not None")
+
+    if path is not None:
+        reader = TiffSequenceReader(path)
+        return [Timestamp(reader.read(i)) for i in range(reader.num_images)]
+    if images is not None:
+        return [Timestamp(image) for image in images]
+
+
+def get_timestamp_diffs(timestamps):
+    times = np.array([timestamp.time for timestamp in timestamps])
+    diffs = [(times[i + 1] - times[i]).total_seconds() for i in range(len(timestamps) - 1)]
 
     return np.array(diffs)
 
 
-def are_timestamps_ok(images):
-    numbers = np.array([Timestamp(image).number for image in images])
+def are_timestamps_ok(timestamps):
+    numbers = np.array([timestamp.number for timestamp in timestamps])
     return np.all(numbers[1:] - numbers[:-1] == 1)
 
 
