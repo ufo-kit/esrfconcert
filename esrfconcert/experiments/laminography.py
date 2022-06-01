@@ -231,6 +231,8 @@ class ContinuousLaminography(SteppedLaminography):
         await self._camera.set_num_buffers(min(2 * self._num_projections, max_buffered_images))
         await self._camera.set_buffered(True)
         LOG.info('Setting num_buffers to %s', await self._camera.get_num_buffers())
+        # TODO: remove after motion_velocity is implemented
+        await self._scanning_motor.set_velocity(25 * q.deg / q.s)
         await self._scanning_motor.set_position(await self.get_start_angle())
 
     async def _finish_radios(self):

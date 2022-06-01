@@ -150,6 +150,8 @@ async def move_pushers_out():
 
 
 async def move_pushers_in():
+    if np.abs(lamino_rot.position.to(q.deg).magnitude > 0.1):
+        raise RuntimeError("lamino_rot not in 0 deg")
     if await px45.get_state() == 'out' and await py45.get_state() == 'out':
         await sx45['position'].restore()
         await sy45['position'].restore()
