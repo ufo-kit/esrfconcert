@@ -173,8 +173,8 @@ class SampleManipulationMotor(ContinuousLinearMotor):
 
         return state
 
-    async def _set_position(self, position):
-        await self._set_position_in_steps(position.to(q.mm).magnitude)
+    async def _set_position(self, position, wait_for=None):
+        await self._set_position_in_steps(position.to(q.mm).magnitude, wait_for=wait_for)
 
     async def move_in(self):
         await self._set_position(self._in_position, wait_for='in')
