@@ -3,6 +3,7 @@
 
 import asyncio
 from concert.base import State, StateError, Quantity, Parameter, Parameterizable, check
+from concert.coroutines.base import wait_until
 from concert.devices.motors import base
 from concert.quantities import q
 from esrfconcert.networking.micos import SocketConnection
@@ -146,6 +147,22 @@ class SampleManipulationMotor(ContinuousLinearMotor):
 
         return abs((pos - desired_position).to(q.mm).magnitude) < self._precision
 
+    async def _set_position_in_steps(self, position, wait_for=None):
+        # TODO: do this properly
+        msg = await self._connection.execute('{} AxisAbs {} {}'.format(self._controller,
+                                                                       self._index + 1, position))
+        if 'Movement not possible due to soft limits' in msg:
+            raise StateError('You cannot move beyond soft limits')
+
+        async def condition():
+            if wait_for is None:
+                possible_states = ['in', 'out', 'standby']
+            else:
+                possible_states = [wait_for]
+            return await self._get_state() in possible_states
+
+        await wait_until(condition, sleep_time=1e-1 * q.s)
+
     async def _get_state(self):
         state = await super()._get_state()
         if state == 'standby':
@@ -155,6 +172,9 @@ class SampleManipulationMotor(ContinuousLinearMotor):
                 return 'out'
 
         return state
+
+    async def _set_position(self, position):
+        await self._set_position_in_steps(position.to(q.mm).magnitude)
 
     async def move_in(self):
         await self._set_position(self._in_position, wait_for='in')
