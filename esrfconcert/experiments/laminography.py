@@ -248,8 +248,6 @@ class ContinuousLaminography(SteppedLaminography):
 
     async def _take_radios(self):
         rot_velocity = await self.get_velocity()
-        # TODO: change this to motion_velocity
-        await self._scanning_motor.set_velocity(rot_velocity)
         margin_time = rot_velocity / await self._scanning_motor.get_acceleration()
         # TODO: make this a parameter
         additional_margin = 0.5 * q.deg
@@ -259,8 +257,11 @@ class ContinuousLaminography(SteppedLaminography):
                  end_pos, additional_margin, margin)
         try:
             await self._prepare_radios()
-            LOG.debug("Starting motion with scanning motor at %s",
-                      await self._scanning_motor.get_position())
+            # TODO: change this to motion_velocity
+            await self._scanning_motor.set_velocity(rot_velocity)
+            LOG.debug("Starting motion with scanning motor at %s with velocity %s",
+                      await self._scanning_motor.get_position(),
+                      await self._scanning_motor.get_velocity())
             motion_task = self._scanning_motor.set_position(end_pos)
             LOG.debug("Waiting %s for acceleration", margin_time)
             await asyncio.sleep(margin_time.to(q.s).magnitude)
