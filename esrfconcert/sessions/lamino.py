@@ -29,6 +29,7 @@ import numpy as np
 import concert
 from concert.quantities import q
 from concert.coroutines.base import async_generate
+from concert.coroutines.sinks import Accumulate
 from concert.devices.cameras.uca import Camera
 from concert.devices.cameras.pco import Timestamp
 from concert.ext.viewers import PyplotImageViewer
@@ -51,13 +52,10 @@ from esrfconcert.devices.motors.micos import (
 )
 from esrfconcert.devices.motors.sampletranslation import (move_sample_x, move_sample_y)
 from esrfconcert.networking.micos import SocketConnection
-from bliss.setup_globals import *
-from bliss.common import session
-from bliss.config import static
-from bliss.shell import standard
 
 
 LOG = logging.getLogger(__name__)
+LIVE_PREVIEW_FPS = 0.25 / q.s
 
 
 # Set parameters
@@ -71,59 +69,21 @@ steps_per_degree = 26222
 # TO CHECK: INDECES CORRECT? IN ANDREI'S SCRIPT CONSTRUCTORS ARE CALLED WITH INDEX-1?!
 # sample translation motors
 # puscher
-sx45 = SampleManipulationMotor('Sam', 0, micos_connection[0], micos_connection[1],
+sx45 = await SampleManipulationMotor('Sam', 0, micos_connection[0], micos_connection[1],
                                in_position=146.05 * q.mm, out_position=0 * q.mm)
-sy45 = SampleManipulationMotor('Sam', 1, micos_connection[0], micos_connection[1],
+sy45 = await SampleManipulationMotor('Sam', 1, micos_connection[0], micos_connection[1],
                                in_position=164.1 * q.mm, out_position=0 * q.mm)
 # magnets
-px45 = SampleManipulationMotor('Sam', 2, micos_connection[0], micos_connection[1],
+px45 = await SampleManipulationMotor('Sam', 2, micos_connection[0], micos_connection[1],
                                in_position=-0.2 * q.mm, out_position=-1.2 * q.mm)
-py45 = SampleManipulationMotor('Sam', 3, micos_connection[0], micos_connection[1],
+py45 = await SampleManipulationMotor('Sam', 3, micos_connection[0], micos_connection[1],
                                in_position=1 * q.mm, out_position=0 * q.mm)
 # scanning rotation motor
 # TO CHECK: INDECES CORRECT? IN ANDREI'S SCRIPT CONSTRUCTORS ARE CALLED WITH INDEX-1?!
-lamino_rot = LaminoScanningMotor('Sam', 4, micos_connection[0], micos_connection[1], sx45, sy45)
-lamino_tilt = ContinuousRotationMotor('Cont2', 0, micos_connection[0], micos_connection[1])
-pseudo_motor = PseudoMotor('Cont2', micos_connection[0], micos_connection[1])
-
-
-lamino_tilt['position'].upper = 30*q.deg
-
-# Bliss beamline components
-
-blissConfig = static.get_config()
-
-# 'lamino' session contains:
-# - motors: lmy, lmz (for microscope)
-# - shutters: frontend, bsh1, bsh2
-# - storage ring: machinfo
-blissSessionLamino =  blissConfig.get('lamino')
-blissSessionLamino.setup()
-
-# Microscope translation motors
-lmy = blissSessionLamino.env_dict['lmy']
-lmz = blissSessionLamino.env_dict['lmz']
-
-# Detector tanslation motors
-cx = blissSessionLamino.env_dict['cx']
-cy = blissSessionLamino.env_dict['cy']
-cz = blissSessionLamino.env_dict['cz']
-
-# frondendDevice = blissSessionLamino.env_dict['frontendDevice']
-bsh1 = BlissShutter(blissSessionLamino.env_dict['bsh1'])
-bsh2 = BlissShutter(blissSessionLamino.env_dict['bsh2'])
-fast_shutter = BlissShutter(blissSessionLamino.env_dict['exp_shutter'])
-
-machinfo = blissSessionLamino.env_dict['machinfo']
-
-# 'jens' session contains:
-# - virtual motors: simmot1, simmot2
-
-blissSessionJens =  blissConfig.get('jens')
-blissSessionJens.setup()
-
-simmot1 = blissSessionJens.env_dict['simmot1']
-simmot2 = blissSessionJens.env_dict['simmot2']
+lamino_rot = await LaminoScanningMotor('Sam', 4, micos_connection[0], micos_connection[1], sx45, sy45)
+lamino_tilt = await ContinuousRotationMotor('Cont2', 0, micos_connection[0], micos_connection[1])
+await lamino_tilt['position'].set_upper(30 * q.deg)
+pseudo_motor = await PseudoMotor('Cont2', micos_connection[0], micos_connection[1])
 
 
 async def get_pusher_positions():
@@ -197,19 +157,46 @@ async def set_frame_rate(fps):
     print('FPS={}, exp={}'.format(await camera.get_frame_rate(), await camera.get_exposure_time()))
 
 
+async def stall(producer):
+    # One frame in 2 seconds
+    lps = LIVE_PREVIEW_FPS.to_base_units().magnitude
+    nth = int((await camera.get_frame_rate()).to_base_units().magnitude / lps)
+    i = 0
+
+    async for image in producer:
+        if i % nth == 0:
+            await viewer.show(image)
+        i += 1
+
+
+async def force_saturated_exposure_time(camera, fps):
+    if camera.get_state() == 'recording':
+        await camera.stop_recording()
+    await camera.set_exposure_time(1 * q.s)
+    await camera.set_frame_rate(fps)
+    await camera.start_recording()
+    await camera.stop_recording()
+
+
+async def get_dummy_acceleration(self):
+    """To make the dummy motor work with the lamino experiment."""
+    return 10 * q.deg / q.s ** 2
+
+
 async def prepare(self):
-    if await sx45.get_state() != 'out' or await sy45.get_state() != 'out':
-        await move_pushers_out()
+    # if await sx45.get_state() != 'out' or await sy45.get_state() != 'out':
+    #     await move_pushers_out()
     self.log.info('Camera settings:')
     self.log.info(await camera.info_table)
     self.log.info(await sx45.info_table)
     self.log.info(await sy45.info_table)
     self.log.info(await px45.info_table)
     self.log.info(await py45.info_table)
-    if await bsh1.get_state() != 'open':
-        await bsh1.open()
-    if await bsh2.get_state() != 'open':
-        await bsh2.open()
+    # if await bsh1.get_state() != 'open':
+    #     await bsh1.open()
+    # if await bsh2.get_state() != 'open':
+    #     await bsh2.open()
+
 
 async def seqScan():
     await lamino_rot.set_position(-90*q.deg)
@@ -249,43 +236,45 @@ async def seqScan():
     await lamino_rot.set_position(-45*q.deg)
 
 
-viewer = PyplotImageViewer(show_refresh_rate=False, force=False)
+viewer = await PyplotImageViewer(show_refresh_rate=False, force=False)
 walker = DirectoryWalker(
     bytes_per_file=2**40,
     #root='/mnt/multipath-shares/data/id19/laminography/2022-05-lamino-commissioning',
-    root='/mnt/multipath-shares/data/visitor/blc13800/id19/',
+    root="/data/visitor/ihmi1511/id19/lamino_tests",
     log=LOG,
     log_name='experiment.log'
 )
 
 # Dummy devices
 dummy_walker = DummyWalker()
-shutter = DummyShutter()
-# flat_motor = DummyContinuousLinearMotor()
-# rot_motor = DummyContinuousRotationMotor()
+shutter = await DummyShutter()
+# flat_motor = await DummyContinuousLinearMotor()
+# rot_motor = await DummyContinuousRotationMotor()
 
 # Real deal
-camera = Camera('net')
-camera.timestamp_mode = camera.uca.enum_values.timestamp_mode.BOTH
-camera.trigger_source = 'AUTO'
+camera = await Camera('net')
+await camera.set_timestamp_mode(camera.uca.enum_values.timestamp_mode.BOTH)
+await camera.set_trigger_source('AUTO')
 rot_motor = lamino_rot
 flat_motor = lamino_tilt
 ContinuousLaminography.prepare = prepare
-ex = ContinuousLaminography (
+ex = await ContinuousLaminography (
     walker,
     flat_motor,
     rot_motor,
-    fast_shutter,
-    29.9 * q.deg,
-    0.5 * q.deg,
+    shutter,
+    5 * q.deg,
+    0 * q.deg,
     camera,
-    num_projections=3701
+    num_projections=3600,
+    start_angle=-90 * q.deg
 )
 
-ex.start_angle=-90*q.deg
-ex.angular_range=370*q.deg
+# ex.angular_range=370*q.deg
 
-live_preview = Consumer(ex.acquisitions, viewer)
+live_preview = Consumer(ex.acquisitions, stall)
+acc = Accumulate()
+acc_consumer = Consumer([ex.radios], acc)
 writer = ImageWriter(ex.acquisitions, walker)
 
 # Online reco setup
@@ -304,3 +293,50 @@ writer = ImageWriter(ex.acquisitions, walker)
 #await move_pushers_out()
 #await move_magnets_out()
 
+
+#############################
+### Bliss beamline components
+#############################
+
+from bliss.setup_globals import *
+from bliss.common import session
+from bliss.config import static
+from bliss.shell import standard
+
+blissConfig = static.get_config()
+
+# 'lamino' session contains:
+# - motors: lmy, lmz (for microscope)
+# - shutters: frontend, bsh1, bsh2
+# - storage ring: machinfo
+blissSessionLamino =  blissConfig.get('lamino')
+blissSessionLamino.setup()
+
+# Microscope translation motors
+lmy = blissSessionLamino.env_dict['lmy']
+lmz = blissSessionLamino.env_dict['lmz']
+
+# Detector tanslation motors
+cx = blissSessionLamino.env_dict['cx']
+cy = blissSessionLamino.env_dict['cy']
+cz = blissSessionLamino.env_dict['cz']
+
+frontendDevice = blissSessionLamino.env_dict['frontend']
+bsh1Device = blissSessionLamino.env_dict['bsh1']
+bsh2Device = blissSessionLamino.env_dict['bsh2']
+
+machinfo = blissSessionLamino.env_dict['machinfo']
+
+# 'jens' session contains:
+# - virtual motors: simmot1, simmot2
+
+blissSessionJens =  blissConfig.get('jens')
+blissSessionJens.setup()
+
+simmot1 = blissSessionJens.env_dict['simmot1']
+simmot2 = blissSessionJens.env_dict['simmot2']
+fast_shutter = await BlissShutter(blissSessionLamino.env_dict['exp_shutter'])
+
+#################################
+### Bliss beamline components end
+#################################
