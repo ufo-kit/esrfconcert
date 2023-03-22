@@ -18,7 +18,7 @@ class _Base(object):
     ID19 beamline configuration.
     """
 
-    def __init__(self, device):
+    async def __ainit__(self, device):
         self._device = device
         self._velocity = 0 * self['velocity'].unit
         self['position']._external_lower_getter = self._get_lower_external_position_limit
@@ -94,9 +94,9 @@ class LinearMotor(_Base, base.LinearMotor):
 
     acceleration = Quantity(q.mm / q.s ** 2)
 
-    def __init__(self, device):
-        base.LinearMotor.__init__(self)
-        _Base.__init__(self, device)
+    async def __ainit__(self, device):
+        await base.LinearMotor.__ainit__(self)
+        await _Base.__ainit__(self, device)
 
 
 class ContinuousLinearMotor(LinearMotor, base.ContinuousLinearMotor):
@@ -116,9 +116,9 @@ class RotationMotor(_Base, base.RotationMotor):
 
     acceleration = Quantity(q.deg / q.s ** 2)
 
-    def __init__(self, device):
-        base.RotationMotor.__init__(self)
-        _Base.__init__(self, device)
+    async def __ainit__(self, device):
+        await base.RotationMotor.__ainit__(self)
+        await _Base.__ainit__(self, device)
 
 
 class ContinuousRotationMotor(RotationMotor, base.ContinuousRotationMotor):

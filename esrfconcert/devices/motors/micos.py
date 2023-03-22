@@ -12,7 +12,7 @@ class _Base(object):
     with the controller.  *host* and *port* are connection details.
     """
 
-    def __init__(self, controller, index, host, port):
+    async def __ainit__(self, controller, index, host, port):
         self._controller = controller
         self._index = index
         self._connection = SocketConnection(host, port)
@@ -78,9 +78,9 @@ class LinearMotor(base.LinearMotor, _Base):
 
     acceleration = Quantity(q.mm / q.s ** 2)
 
-    def __init__(self, controller, index, host, port):
-        base.LinearMotor.__init__(self)
-        _Base.__init__(self, controller, index, host, port)
+    async def __ainit__(self, controller, index, host, port):
+        await base.LinearMotor.__ainit__(self)
+        await _Base.__ainit__(self, controller, index, host, port)
 
     async def _get_position(self):
         return await self._get_position_in_steps() * q.mm
@@ -152,9 +152,9 @@ class RotationMotor(base.RotationMotor, _Base):
 
     acceleration = Quantity(q.deg / q.s ** 2)
 
-    def __init__(self, controller, index, host, port):
-        base.RotationMotor.__init__(self)
-        _Base.__init__(self, controller, index, host, port)
+    async def __ainit__(self, controller, index, host, port):
+        await base.RotationMotor.__ainit__(self)
+        await _Base.__ainit__(self, controller, index, host, port)
 
     async def _get_position(self):
         position = await self._get_position_in_steps()
@@ -204,8 +204,8 @@ class LaminoScanningMotor(ContinuousRotationMotor):
 
     """An implementation with specific functionality for the rotary state of LAMINO-I"""
 
-    def __init__(self, controller, index, host, port, pusher1, pusher2):
-        ContinuousRotationMotor.__init__(self, controller, index, host, port)
+    async def __ainit__(self, controller, index, host, port, pusher1, pusher2):
+        await ContinuousRotationMotor.__ainit__(self, controller, index, host, port)
         self.pusher1 = pusher1
         self.pusher2 = pusher2
 

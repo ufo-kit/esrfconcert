@@ -10,8 +10,8 @@ class StorageRing(BaseStorageRing):
 
     state = State()
 
-    def __init__(self, machinfo):
-        super(StorageRing, self).__init__()
+    async def __ainit__(self, machinfo):
+        await super(StorageRing, self).__ainit__()
         self._machinfo = machinfo
 
     async def _get_current(self):
