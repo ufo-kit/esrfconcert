@@ -132,8 +132,9 @@ class SampleManipulationMotor(ContinuousLinearMotor):
 
     """An implementation specifically for pushers and magnets of LAMINO-I."""
 
-    def __init__(self, controller, index, host, port, in_position, out_position, precision=0.1):
-        super().__init__(controller, index, host, port)
+    async def __ainit__(self, controller, index, host, port, in_position, out_position,
+                        precision=0.1):
+        await ContinuousLinearMotor.__ainit__(controller, index, host, port)
         self._in_position = in_position
         self._out_position = out_position
         self._precision = precision
