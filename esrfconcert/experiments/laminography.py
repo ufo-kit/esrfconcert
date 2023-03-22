@@ -24,11 +24,11 @@ class SteppedLaminography(SteppedTomography):
     """
     Stepped laminography
     """
-    def __init__(self, walker, flat_motor, scanning_motor, radio_position, flat_position, camera,
+    async def __ainit__(self, walker, flat_motor, scanning_motor, radio_position, flat_position, camera,
                  shutter, num_flats=51, num_darks=50, num_projections=3600, 
                  angular_range=360 * q.deg, start_angle=0 * q.deg, seperate_scans=True):
         
-        SteppedTomography.__init__(self)
+        await SteppedTomography.__ainit__(self)
 
     async def _take_radios(self):
         try:
@@ -55,20 +55,29 @@ class ContinuousLaminography(ContinuousTomography):
     """
     velocity = Quantity(q.deg / q.s)
 
-    def __init__(self, walker, flat_motor, scanning_motor, shutter, radio_position, flat_position, camera,
+    async def __ainit__(self, walker, flat_motor, scanning_motor, shutter, radio_position, flat_position, camera,
                  num_flats=51, num_darks=50, num_projections=3600, angular_range=360 * q.deg, start_angle=0 * q.deg,
                  separate_scans=True):
-        super(ContinuousLaminography, self).__init__(walker=walker, flat_motor=flat_motor,
-                                                     tomography_motor=scanning_motor, shutter=shutter,
-                                                     radio_position=radio_position, flat_position=flat_position,
-                                                     camera=camera, num_flats=num_flats, num_darks=num_darks,
-                                                     num_projections=num_projections, angular_range=angular_range,
-                                                     start_angle=start_angle, separate_scans=separate_scans)
+        await ContinuousTomography.__ainit__(
+            self,
+            walker=walker,
+            flat_motor=flat_motor,
+            tomography_motor=scanning_motor,
+            shutter=shutter,
+            radio_position=radio_position,
+            flat_position=flat_position,
+            camera=camera,
+            num_flats=num_flats,
+            num_darks=num_darks,
+            num_projections=num_projections,
+            angular_range=angular_range,
+            start_angle=start_angle,
+            separate_scans=separate_scans
+        )
         self['radio_position']._parameter.unit = q.deg
         self['flat_position']._parameter.unit = q.deg
 
     async def _prepare_radios(self):
-        await super(ContinuousLaminography, self)._prepare_radios()
         if 'motion_velocity' in self._tomography_motor:
             await self._tomography_motor['motion_velocity'].stash()
         await self._camera.set_trigger_source('AUTO')
@@ -80,6 +89,9 @@ class ContinuousLaminography(ContinuousTomography):
         await self._camera.set_num_buffers(min(self._num_projections, max_buffered_images))
         await self._camera.set_buffered(True)
         LOG.info('Setting num_buffers to %s', await self._camera.get_num_buffers())
+
+        await self._flat_motor.set_position(await self.get_radio_position())
+        await self._tomography_motor.set_velocity(25 * q.deg / q.s)
         await self._tomography_motor.set_position(await self.get_start_angle())
 
     async def _finish_radios(self):
@@ -95,8 +107,6 @@ class ContinuousLaminography(ContinuousTomography):
 
     async def _take_radios(self):
         rot_velocity = await self.get_velocity()
-        # TODO: change this to motion_velocity
-        await self._tomography_motor.set_velocity(rot_velocity)
         margin_time = rot_velocity / await self._tomography_motor.get_acceleration()
         # TODO: make this a parameter
         additional_margin = 0.5 * q.deg
@@ -106,6 +116,8 @@ class ContinuousLaminography(ContinuousTomography):
                  end_pos, additional_margin, margin)
         try:
             await self._prepare_radios()
+            # TODO: change this to motion_velocity
+            await self._tomography_motor.set_velocity(rot_velocity)
             LOG.debug("Starting motion with scanning motor at %s",
                       await self._tomography_motor.get_position())
             motion_task = self._tomography_motor.set_position(end_pos)
