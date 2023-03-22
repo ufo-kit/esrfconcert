@@ -72,9 +72,9 @@ steps_per_degree = 26222
 # sample translation motors
 # puscher
 sx45 = SampleManipulationMotor('Sam', 0, micos_connection[0], micos_connection[1],
-                               in_position=1 * q.mm, out_position=0 * q.mm)
+                               in_position=146.05 * q.mm, out_position=0 * q.mm)
 sy45 = SampleManipulationMotor('Sam', 1, micos_connection[0], micos_connection[1],
-                               in_position=1 * q.mm, out_position=0 * q.mm)
+                               in_position=164.1 * q.mm, out_position=0 * q.mm)
 # magnets
 px45 = SampleManipulationMotor('Sam', 2, micos_connection[0], micos_connection[1],
                                in_position=-0.2 * q.mm, out_position=-1.2 * q.mm)
@@ -150,7 +150,7 @@ async def move_pushers_out():
 
 
 async def move_pushers_in():
-    if np.abs(lamino_rot.position.to(q.deg).magnitude > 0.1):
+    if np.abs((await lamino_rot.get_position()).to(q.deg).magnitude + 90) > 0.1:
         raise RuntimeError("lamino_rot not in 0 deg")
     if await px45.get_state() == 'out' and await py45.get_state() == 'out':
         await sx45['position'].restore()
@@ -211,6 +211,43 @@ async def prepare(self):
     if await bsh2.get_state() != 'open':
         await bsh2.open()
 
+async def seqScan():
+    await lamino_rot.set_position(-90*q.deg)
+    await move_pushers_in()
+    await px45.move_in()
+    await py45.move_in()
+    await sx45.set_position(146.05*q.mm)
+    await sy45.set_position(162.4*q.mm)
+    await px45.move_out()
+    await py45.move_out()
+    await move_pushers_out()
+    await ex.run()
+    await move_pushers_in()
+    await px45.move_in()
+    await py45.move_in()
+    await sy45.set_position(164.1*q.mm)
+    await px45.move_out()
+    await py45.move_out()
+    await move_pushers_out()
+    await ex.run()
+    await move_pushers_in()
+    await px45.move_in()
+    await py45.move_in()
+    await sy45.set_position(165.8*q.mm)
+    await px45.move_out()
+    await py45.move_out()
+    await move_pushers_out()
+    await ex.run()
+    await move_pushers_in()
+    await px45.move_in()
+    await py45.move_in()
+    await sy45.set_position(164.1*q.mm)
+    await px45.move_out()
+    await py45.move_out()
+    await move_pushers_out()
+    await lamino_tilt.set_position(4*q.deg)
+    await lamino_rot.set_position(-45*q.deg)
+
 
 viewer = PyplotImageViewer(show_refresh_rate=False, force=False)
 walker = DirectoryWalker(
@@ -259,3 +296,11 @@ writer = ImageWriter(ex.acquisitions, walker)
 #args.region = [0.0, 1.0, 1.0]
 #manager = GeneralBackprojectManager(args)
 #reco = OnlineReconstruction(ex, args, do_normalization=False, average_normalization=True)
+# To Do:
+# treat rotation position as pusher positions!
+# write shutdown routine:
+#lamino_rot.position = -1 * q.deg
+#lamino_tilt.position = 0 * q.deg
+#await move_pushers_out()
+#await move_magnets_out()
+
