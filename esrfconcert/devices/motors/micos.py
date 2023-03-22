@@ -134,7 +134,7 @@ class SampleManipulationMotor(ContinuousLinearMotor):
 
     async def __ainit__(self, controller, index, host, port, in_position, out_position,
                         precision=0.1):
-        await ContinuousLinearMotor.__ainit__(controller, index, host, port)
+        await ContinuousLinearMotor.__ainit__(self, controller, index, host, port)
         self._in_position = in_position
         self._out_position = out_position
         self._precision = precision
@@ -260,9 +260,9 @@ class PseudoMotor(Parameterizable, _Base):
     position = Parameter(help='Position vector for several axes')
     state = State(default='standby')
 
-    def __init__(self, controller, host, port):
-        _Base.__init__(self, controller, None, host, port)
-        Parameterizable.__init__(self)
+    async def __ainit__(self, controller, host, port):
+        await _Base.__ainit__(self, controller, None, host, port)
+        await Parameterizable.__ainit__(self)
 
     async def set_position(self, positions):
         str_positions = ' '.join([str(pos) for pos in positions])
