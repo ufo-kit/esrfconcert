@@ -278,13 +278,15 @@ acc_consumer = Consumer([ex.radios], acc)
 writer = ImageWriter(ex.acquisitions, walker)
 
 # Online reco setup
-#n = 2560
-#args = GeneralBackprojectArgs([n // 2], [n // 2 + 0.5], ex.num_projections, overall_angle=2 * np.pi)
-#args.absorptivity = True
-#args.fix_nan_and_inf = True
-#args.region = [0.0, 1.0, 1.0]
-#manager = GeneralBackprojectManager(args)
-#reco = OnlineReconstruction(ex, args, do_normalization=False, average_normalization=True)
+n = 2560
+args = GeneralBackprojectArgs([n // 2], [n // 2 + 0.5], await ex.get_num_projections(), overall_angle=2 * np.pi)
+args.absorptivity = True
+args.fix_nan_and_inf = True
+args.region = [0.0, 1.0, 1.0]
+# args.axis_angle_x = [await ex.radio_position.to(q.rad).magnitude]
+args.axis_angle_x = [float(np.deg2rad(30))]
+manager = GeneralBackprojectManager(args)
+reco = await OnlineReconstruction(ex, args, do_normalization=True, average_normalization=True)
 # To Do:
 # treat rotation position as pusher positions!
 # write shutdown routine:
