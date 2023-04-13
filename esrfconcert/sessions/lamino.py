@@ -52,6 +52,8 @@ from esrfconcert.devices.motors.micos import (
 )
 from esrfconcert.devices.motors.sampletranslation import (move_sample_x, move_sample_y)
 from esrfconcert.networking.micos import SocketConnection
+from pco_camera import Camera as Edge
+from pco_camera import PCOTimestampCheck
 
 
 LOG = logging.getLogger(__name__)
@@ -252,8 +254,8 @@ shutter = await DummyShutter()
 # rot_motor = await DummyContinuousRotationMotor()
 
 # Real deal
-camera = await Camera('net')
-await camera.set_timestamp_mode(camera.uca.enum_values.timestamp_mode.BOTH)
+camera = await Edge('net')
+await camera.set_timestamp_mode(camera.uca.enum_values.timestamp_mode.BINARY)
 await camera.set_trigger_source('AUTO')
 rot_motor = lamino_rot
 flat_motor = lamino_tilt
@@ -276,6 +278,8 @@ live_preview = Consumer(ex.acquisitions, stall)
 acc = Accumulate()
 acc_consumer = Consumer([ex.radios], acc)
 writer = ImageWriter(ex.acquisitions, walker)
+timestamp_check = PCOTimestampCheck(ex)
+
 
 # Online reco setup
 n = 2560
