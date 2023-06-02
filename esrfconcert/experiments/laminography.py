@@ -93,6 +93,7 @@ class ContinuousLaminography(ContinuousTomography):
         await self._flat_motor.set_position(await self.get_radio_position())
         await self._tomography_motor.set_velocity(25 * q.deg / q.s)
         await self._tomography_motor.set_position(await self.get_start_angle())
+        await self.start_sample_exposure()
 
     async def _finish_radios(self):
         if self._finished:
