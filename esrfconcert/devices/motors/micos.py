@@ -1,12 +1,20 @@
 # TODO: do we still need this?
 """Micos motors from ANKA laminograph at ID19 at ESRF."""
 
-import asyncio
+import numpy as np
 from concert.base import State, StateError, Quantity, Parameter, Parameterizable, check
 from concert.coroutines.base import wait_until
 from concert.devices.motors import base
 from concert.quantities import q
 from esrfconcert.networking.micos import SocketConnection
+
+
+# Define angle between x_beamline and y_beamline
+ALPHA = 90 * q.deg
+# Define angle between x_pusher and y_pusher
+BETA = 90 * q.deg
+# Define angle between x_beamline and x_pusher
+GAMMA = 135 * q.deg
 
 
 class _Base(object):
@@ -264,19 +272,61 @@ class PseudoMotor(Parameterizable, _Base):
         await _Base.__ainit__(self, controller, None, host, port)
         await Parameterizable.__ainit__(self)
 
-    async def set_position(self, positions):
+    async def _set_position(self, positions):
         str_positions = ' '.join([str(pos) for pos in positions])
-        msg = await self._connection.execute('{} MoveAbs {}'.format(self._controller, str_positions))
+        msg = await self._connection.execute(
+            '{} MoveAbs {}'.format(self._controller, str_positions)
+        )
 
         if 'Movement not possible due to soft limits' in msg:
             raise StateError('You cannot move beyond soft limits')
 
         await self['state'].wait('standby', sleep_time=self._connection.sleep_between)
 
-    async def get_position(self):
-        str_positions = self._get_positions_in_steps()
+    async def _get_position(self):
+        str_positions = await self._get_positions_in_steps()
 
         return [float(pos) for pos in str_positions]
+
+    async def _get_state(self):
+        return await _Base.get_state(self)
+
+
+class SampleMotor(PseudoMotor):
+
+    async def __ainit__(self, controller, host, port, sx45, sy45, px45, py45, lamino_tilt):
+        await PseudoMotor.__ainit__(self, controller, host, port)
+        self.sx45 = sx45
+        self.sy45 = sy45
+        self.px45 = px45
+        self.py45 = py45
+        self.lamino_tilt = lamino_tilt
+
+    async def move_x(self, rel_pos):
+        return await self._move(rel_pos)
+
+    async def move_y(self, rel_pos):
+        return await self._move(rel_pos, offset=ALPHA)
+
+    async def _move(self, rel_pos, offset=0 * q.deg):
+        # check if magnets are out: Sample should be only moved if magnets are in!
+        if await self.px45.get_state() != 'in' and await self.py45.get_state() != 'in':
+            raise RuntimeError('Magnets are not in')
+        else:
+            # get current positions
+            tilt_pos = await self.lamino_tilt.get_position()
+            sx45_pos = await self.sx45.get_position()
+            sy45_pos = await self.sy45.get_position()
+
+            # calculate target positions, x/y controlled by offset
+            sx45_target = sx45_pos + rel_pos / np.cos(GAMMA - offset)
+            sy45_target = sy45_pos + rel_pos / np.cos(GAMMA + BETA - offset)
+
+            await self.set_position([
+                tilt_pos.to(q.deg).magnitude,
+                sx45_target.to(q.mm).magnitude,
+                sy45_target.to(q.mm).magnitude
+            ])
 
 
 class LaminoRotException(Exception):
