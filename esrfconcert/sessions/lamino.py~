@@ -48,7 +48,6 @@ from esrfconcert.devices.motors.micos import (
     ContinuousRotationMotor,
     LaminoScanningMotor,
     PseudoMotor,
-    SampleMotor,
     SampleManipulationMotor
 )
 from esrfconcert.devices.motors.sampletranslation import (move_sample_x, move_sample_y)
@@ -65,7 +64,7 @@ LIVE_PREVIEW_FPS = 0.25 / q.s
 # Micos Motion Server:
 
 concert.config.PROGRESS_BAR = False
-micos_connection = ('172.29.30.162', 6542)
+micos_connection = ('160.103.39.110', 6542)
 steps_per_degree = 26222
 
 # scanning rotation motor
@@ -73,30 +72,20 @@ steps_per_degree = 26222
 # sample translation motors
 # puscher
 sx45 = await SampleManipulationMotor('Sam', 0, micos_connection[0], micos_connection[1],
-                               in_position=140.0 * q.mm, out_position=0 * q.mm)
+                               in_position=146.05 * q.mm, out_position=0 * q.mm)
 sy45 = await SampleManipulationMotor('Sam', 1, micos_connection[0], micos_connection[1],
-                               in_position=140.0 * q.mm, out_position=0 * q.mm)
+                               in_position=164.1 * q.mm, out_position=0 * q.mm)
 # magnets
 px45 = await SampleManipulationMotor('Sam', 2, micos_connection[0], micos_connection[1],
-                               in_position=0.9 * q.mm, out_position=0.0 * q.mm)
+                               in_position=-0.2 * q.mm, out_position=-1.2 * q.mm)
 py45 = await SampleManipulationMotor('Sam', 3, micos_connection[0], micos_connection[1],
-                               in_position=0.9 * q.mm, out_position=0.0 * q.mm)
+                               in_position=1 * q.mm, out_position=0 * q.mm)
 # scanning rotation motor
 # TO CHECK: INDECES CORRECT? IN ANDREI'S SCRIPT CONSTRUCTORS ARE CALLED WITH INDEX-1?!
 lamino_rot = await LaminoScanningMotor('Sam', 4, micos_connection[0], micos_connection[1], sx45, sy45)
 lamino_tilt = await ContinuousRotationMotor('Cont2', 0, micos_connection[0], micos_connection[1])
-await lamino_tilt['position'].set_upper(32 * q.deg)
+await lamino_tilt['position'].set_upper(30 * q.deg)
 pseudo_motor = await PseudoMotor('Cont2', micos_connection[0], micos_connection[1])
-sample_motor = await SampleMotor(
-    'Cont2',
-    micos_connection[0],
-    micos_connection[1],
-    sx45,
-    sy45,
-    px45,
-    py45,
-    lamino_tilt
-)
 
 
 async def get_pusher_positions():
@@ -109,16 +98,6 @@ async def get_pusher_positions():
 class MagnetsInException(Exception):
     pass
 
-air_connection = SocketConnection(micos_connection[0], micos_connection[1])
-
-
-async def air_on():
-    await air_connection.send('Dmc2143 sendcommand SB 1')
-
-
-async def air_off():
-    await air_connection.send('Dmc2143 sendcommand CB 1')
-
 
 async def move_pushers_out():
     if await px45.get_state() != 'out':
@@ -126,7 +105,6 @@ async def move_pushers_out():
     if await py45.get_state() != 'out':
         await py45.move_out()
 
-    await air_off()
     await sx45['position'].stash()
     await sy45['position'].stash()
     await sx45.move_out()
@@ -141,7 +119,6 @@ async def move_pushers_in():
         await sy45['position'].restore()
         await px45.move_in()
         await py45.move_in()
-        await air_on()
     else:
         raise MagnetsInException('Magnets are still in')
 
@@ -264,8 +241,8 @@ async def seqScan():
 viewer = await PyplotImageViewer(show_refresh_rate=False, force=False)
 walker = DirectoryWalker(
     bytes_per_file=2**40,
-    root='/mnt/multipath-shares/data/id19/laminography/2023-06-lamino-commissioning',
-    #root="/data/visitor/ma5716/id19/concert",
+    #root='/mnt/multipath-shares/data/id19/laminography/2022-05-lamino-commissioning',
+    root="/data/visitor/ihmi1511/id19/lamino_tests",
     log=LOG,
     log_name='experiment.log'
 )
@@ -278,7 +255,7 @@ shutter = await DummyShutter()
 
 # Real deal
 camera = await Edge('net')
-await camera.set_timestamp_mode(camera.uca.enum_values.timestamp_mode.BINARY)
+await camera.set_timestamp_mode(camera.uca.enum_values.timestamp_mode.BOTH)
 await camera.set_trigger_source('AUTO')
 rot_motor = lamino_rot
 flat_motor = lamino_tilt
@@ -288,24 +265,10 @@ ex = await ContinuousLaminography (
     flat_motor,
     rot_motor,
     shutter,
-    30.75 * q.deg,
+    5 * q.deg,
     0 * q.deg,
     camera,
-    angular_range = 370 * q.deg,
-    num_projections=8000,
-    start_angle=-90 * q.deg
-)
-
-ex_flats = await ContinuousLaminography (
-    walker,
-    flat_motor,
-    rot_motor,
-    shutter,
-    0 * q.deg,
-    0 * q.deg,
-    camera,
-    angular_range = 5 * q.deg,
-    num_projections=50,
+    num_projections=3600,
     start_angle=-90 * q.deg
 )
 
@@ -315,20 +278,19 @@ live_preview = Consumer(ex.acquisitions, stall)
 acc = Accumulate()
 acc_consumer = Consumer([ex.radios], acc)
 writer = ImageWriter(ex.acquisitions, walker)
-writer2 = ImageWriter(ex_flats.acquisitions, walker)
 timestamp_check = PCOTimestampCheck(ex)
 
 
 # Online reco setup
-#n = 2560
-#args = GeneralBackprojectArgs([n // 2], [n // 2 + 0.5], await ex.get_num_projections(), overall_angle=2 * np.pi)
-#args.absorptivity = True
-#args.fix_nan_and_inf = True
-#args.region = [0.0, 1.0, 1.0]
-#args.axis_angle_x = [await ex.radio_position.to(q.rad).magnitude]
-#args.axis_angle_x = [float(np.deg2rad(30.5))]
-#manager = GeneralBackprojectManager(args)
-#reco = await OnlineReconstruction(ex, args, do_normalization=True, average_normalization=True)
+n = 2560
+args = GeneralBackprojectArgs([n // 2], [n // 2 + 0.5], await ex.get_num_projections(), overall_angle=2 * np.pi)
+args.absorptivity = True
+args.fix_nan_and_inf = True
+args.region = [0.0, 1.0, 1.0]
+# args.axis_angle_x = [await ex.radio_position.to(q.rad).magnitude]
+args.axis_angle_x = [float(np.deg2rad(30))]
+manager = GeneralBackprojectManager(args)
+reco = await OnlineReconstruction(ex, args, do_normalization=True, average_normalization=True)
 # To Do:
 # treat rotation position as pusher positions!
 # write shutdown routine:
@@ -365,17 +327,6 @@ cx = blissSessionLamino.env_dict['cx']
 cy = blissSessionLamino.env_dict['cy']
 cz = blissSessionLamino.env_dict['cz']
 
-# Optics motors
-rotc1p29A = blissSessionLamino.env_dict['rotc1p29A']
-rotc0p3A = blissSessionLamino.env_dict['rotc0p3A']
-rotc0p6A = blissSessionLamino.env_dict['rotc0p6A']
-
-focus0p45A = blissSessionLamino.env_dict['focus0p45A']
-focus1A = blissSessionLamino.env_dict['focus1A']
-focus1p5A = blissSessionLamino.env_dict['focus1p5A']
-
-focrev = blissSessionLamino.env_dict['focrev']
-
 frontendDevice = blissSessionLamino.env_dict['frontend']
 bsh1Device = blissSessionLamino.env_dict['bsh1']
 bsh2Device = blissSessionLamino.env_dict['bsh2']
@@ -388,14 +339,10 @@ machinfo = blissSessionLamino.env_dict['machinfo']
 blissSessionJens =  blissConfig.get('jens')
 blissSessionJens.setup()
 
-# simmot1 = blissSessionJens.env_dict['simmot1']
-# simmot2 = blissSessionJens.env_dict['simmot2']
+simmot1 = blissSessionJens.env_dict['simmot1']
+simmot2 = blissSessionJens.env_dict['simmot2']
 fast_shutter = await BlissShutter(blissSessionLamino.env_dict['exp_shutter'])
-
-experiment_shutter = await BlissShutter(blissSessionLamino.env_dict['bsh2'])
 
 #################################
 ### Bliss beamline components end
 #################################
-
-ex._shutter = experiment_shutter
