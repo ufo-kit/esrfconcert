@@ -25,7 +25,7 @@ class _Base(object):
         self['position']._external_upper_getter = self._get_upper_external_position_limit
 
     def _get_external_limit(self, which):
-        return self._device.limits[which]
+        return self._device.limits[which] * self['position'].unit
 
     async def _get_lower_external_position_limit(self):
         return self._get_external_limit(0)
