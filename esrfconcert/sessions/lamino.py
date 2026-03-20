@@ -58,6 +58,8 @@ from esrfconcert.devices.motors.bliss import (
 # from esrfconcert.devices.motors.sampletranslation import (move_sample_x, move_sample_y)
 from esrfconcert.networking.micos import SocketConnection
 from pco_camera import Camera as Edge
+import os
+os.environ['UCA_CAMERA_HOST']='lid19det2:8989'
 from pco_camera import PCOTimestampCheck
 
 
@@ -69,7 +71,8 @@ LIVE_PREVIEW_FPS = 0.25 / q.s
 # Micos Motion Server:
 
 concert.config.PROGRESS_BAR = False
-micos_connection = ('172.29.30.162', 6542)
+#micos_connection = ('172.29.30.162', 6542)
+micos_connection = ('172.29.30.77', 6542)
 steps_per_degree = 26222
 
 # scanning rotation motor
@@ -236,8 +239,8 @@ async def prepare(self):
 viewer = await PyplotImageViewer(show_refresh_rate=False, force=False)
 walker = DirectoryWalker(
     bytes_per_file=2**40,
-    root='/mnt/multipath-shares/data/id19/laminography/2023-10-lamino-commissioning',
-    #root="/data/visitor/blc14660/id19/concert",
+    #root='/mnt/multipath-shares/data/id19/laminography',
+    root="/mnt/multipath-shares/data/visitor/ma6878/id19/concert",
     log=LOG,
     log_name='experiment.log'
 )
@@ -252,6 +255,11 @@ shutter = await DummyShutter()
 camera = await Edge('net')
 await camera.set_timestamp_mode(camera.uca.enum_values.timestamp_mode.BINARY)
 await camera.set_trigger_source('AUTO')
+#await camera.exposure_time = 0.1 * q.s
+# await camera.set_frame_rate(10 / q.s)
+await force_saturated_exposure_time(camera, 10 / q.s)
+camera.convert = np.flipud
+
 rot_motor = lamino_rot
 flat_motor = lamino_tilt
 ContinuousLaminography.prepare = prepare
@@ -260,14 +268,14 @@ ex = await ContinuousLaminography (
     flat_motor,
     rot_motor,
     shutter,
-    30.0 * q.deg,
-    0 * q.deg,
+    29.0 * q.deg,
+    0.5 * q.deg,
     camera,
-    angular_range = 370.1 * q.deg,
-    num_projections=3701,
+    angular_range = 370.097195 * q.deg,
+    num_projections=3702,
     start_angle=-90 * q.deg,
-    num_flats = 50,
-    num_darks = 50
+    num_flats = 100,
+    num_darks = 100
 )
 
 
@@ -279,15 +287,18 @@ timestamp_check = PCOTimestampCheck(ex)
 
 
 # Online reco setup
-n = 2560
-args = GeneralBackprojectArgs([n // 2], [n // 2 + 0.5], await ex.get_num_projections(), overall_angle=2 * np.pi)
-args.absorptivity = True
-args.fix_nan_and_inf = True
-args.region = [0.0, 1.0, 1.0]
-args.axis_angle_x = [(await ex.get_radio_position()).to(q.rad).magnitude]
+# ONLINE RECO START -> UNCOMMENT BELOW TO USE
+# n = 2560
+# args = GeneralBackprojectArgs([n // 2], [n // 2 + 0.5], await ex.get_num_projections(), overall_angle=2 * np.pi)
+# args.absorptivity = True
+# args.fix_nan_and_inf = True
+# args.region = [0.0, 1.0, 1.0]
+# args.axis_angle_x = [(await ex.get_radio_position()).to(q.rad).magnitude]
 # args.axis_angle_x = [float(np.deg2rad(30.5))]
-manager = GeneralBackprojectManager(args)
-reco = await OnlineReconstruction(ex, args, do_normalization=True, average_normalization=True)
+# manager = GeneralBackprojectManager(args)
+# reco = await OnlineReconstruction(ex, args, do_normalization=True, average_normalization=True)
+# ONLINE RECO STOP -> UNCOMMENT ABOVE TO USE (and restart the session!)
+
 # To Do:
 # treat rotation position as pusher positions!
 # write shutdown routine:
@@ -313,7 +324,7 @@ blissConfig = static.get_config()
 # - shutters: frontend, bsh1, bsh2
 # - storage ring: machinfo
 
-blissSessionLamino =  blissConfig.get('lamino')
+blissSessionLamino =  blissConfig.get('LATOMO')
 blissSessionLamino.setup()
 
 # Microscope translation motors
@@ -362,3 +373,8 @@ experiment_shutter = await BlissShutter(blissSessionLamino.env_dict['bsh2'])
 #################################
 
 ex._shutter = experiment_shutter
+
+await lamino_rot['position'].set_upper(300.0 * q.deg)
+await lamino_rot['position'].set_lower(-120.0 * q.deg)
+await lamino_tilt['position'].set_upper(30.1 * q.deg)
+await lamino_tilt['position'].set_lower(-0.1 *q.deg)
