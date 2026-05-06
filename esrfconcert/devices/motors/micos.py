@@ -1,12 +1,14 @@
 # TODO: do we still need this?
 """Micos motors from ANKA laminograph at ID19 at ESRF."""
-
+import asyncio
 import numpy as np
 from concert.base import State, StateError, Quantity, Parameter, Parameterizable, check
-from concert.coroutines.base import wait_until
+from concert.coroutines.base import wait_until, background
+
 from concert.devices.motors import base
 from concert.quantities import q
 from esrfconcert.networking.micos import SocketConnection
+
 
 
 # Define angle between x_beamline and y_beamline
@@ -17,8 +19,7 @@ BETA = 90 * q.deg
 GAMMA = 135 * q.deg
 
 
-class _Base(object):
-
+class _Base(Parameterizable):
     """Base for all Micos motors on the laminograph at ID19. Motor *name* is used for communication
     with the controller.  *host* and *port* are connection details.
     """
@@ -27,6 +28,8 @@ class _Base(object):
         self._controller = controller
         self._index = index
         self._connection = SocketConnection(host, port)
+        self._motion_velocity = None
+        await Parameterizable.__ainit__(self)
 
     async def _get_positions_in_steps(self):
         pos = await self._connection.execute('{} Crds ?'.format(self._controller))
@@ -39,13 +42,15 @@ class _Base(object):
 
         return float(split[self._index])
 
+    @background
     async def _set_position_in_steps(self, position, wait_for='standby'):
         msg = await self._connection.execute('{} AxisAbs {} {}'.format(self._controller,
                                                                        self._index + 1, position))
         if 'Movement not possible due to soft limits' in msg:
             raise StateError('You cannot move beyond soft limits')
 
-        await self['state'].wait(wait_for, sleep_time=self._connection.sleep_between)
+        if wait_for is not None:
+            await self['state'].wait(wait_for, sleep_time=self._connection.sleep_between)
 
     async def _get_acceleration_unitless(self):
         acceleration = await self._connection.execute('{} Accel ?'.format(self._controller))
@@ -75,7 +80,30 @@ class _Base(object):
         await self._connection.send('{} Stop'.format(self._controller))
         await self['state'].wait('standby', sleep_time=self._connection.sleep_between)
 
-    async def get_state(self):
+    async def _set_motion_velocity(self, motion_velocity):
+        self._motion_velocity = motion_velocity
+
+    async def _get_motion_velocity(self):
+        return self._motion_velocity
+
+    async def _get_position(self):
+        return await self._get_position_in_steps() * self['position'].unit
+
+    async def _set_position(self, position, wait_for='standby'):
+        position = position.to(self['position'].unit).magnitude
+        # Since we can not nicely separate velocity and motion velocity, we store the motion_velocity in the Motor class
+        # and send it with each position setter.
+        await self._set_velocity_in_steps((await self.get_motion_velocity()).to(self['position'].unit / q.s).magnitude)
+        await self._set_position_in_steps(position, wait_for=wait_for)
+
+    async def _get_acceleration(self):
+        return await self._get_acceleration_unitless() * self['position'].unit / q.s ** 2
+
+    async def _set_acceleration(self, acceleration):
+        acceleration = acceleration.to(self['position'].unit / q.s ** 2).magnitude
+        await self._set_acceleration_unitless(acceleration)
+
+    async def _get_state(self):
         """Return the motor state."""
         # TODO: the controller provides information on the state of all motor, i.e. if one motor is
         # moving this function returns True also for all other controller motors.
@@ -89,55 +117,69 @@ class _Base(object):
 
 
 class LinearMotor(base.LinearMotor, _Base):
-
     """A linear motor implementation."""
 
     acceleration = Quantity(q.mm / q.s ** 2)
+    motion_velocity = Quantity(q.mm / q.s)
 
     async def __ainit__(self, controller, index, host, port):
         await base.LinearMotor.__ainit__(self)
         await _Base.__ainit__(self, controller, index, host, port)
-
-    async def _get_position(self):
-        return await self._get_position_in_steps() * q.mm
-
-    async def _set_position(self, position, wait_for='standby'):
-        position = position.to(q.mm).magnitude
-        await self._set_position_in_steps(position, wait_for=wait_for)
-
-    async def _get_acceleration(self):
-        return await self._get_acceleration_unitless() * q.mm / q.s ** 2
-
-    async def _set_acceleration(self, acceleration):
-        acceleration = acceleration.to(q.mm / q.s ** 2).magnitude
-        await self._set_acceleration_unitless(acceleration)
-
-    async def _get_state(self):
-        return await _Base.get_state(self)
-
-    async def _home(self):
-        await _Base._home(self)
-
-    async def _stop(self):
-        await _Base._stop(self)
+        await self.set_motion_velocity(10 * q.mm / q.s)  # TDOD: Select proper defaults
 
 
-class ContinuousLinearMotor(LinearMotor, base.ContinuousLinearMotor):
+class _MicosContinuous(Parameterizable):
+    additional_time = Quantity(q.s)
 
-    """A continuous linear motor implementation."""
+    async def __ainit__(self):
+        self._max_position = None
+        self._min_position = None
+        self._additional_time = None
+        await Parameterizable.__ainit__(self)
+        await self.set_additional_time(1 * q.s)
 
-    async def _get_velocity(self):
-        velocity = await self._get_velocity_in_steps()
+    async def _set_max_position(self, max_position):
+        self._max_position = max_position
 
-        return velocity * q.mm / q.s
+    async def _get_max_position(self):
+        return self._max_position
+
+    async def _set_min_position(self, min_position):
+        self._min_position = min_position
+
+    async def _get_min_position(self):
+        return self._min_position
+
+    async def _set_additional_time(self, additional_time):
+        self._additional_time = additional_time
+
+    async def _get_additional_time(self):
+        return self._additional_time
 
     async def _set_velocity(self, velocity):
-        velocity = velocity.to(q.mm / q.s).magnitude
+        acceleration_time = velocity / (await self.get_acceleration())
+        velocity = velocity.to(self['position'].unit / q.s).magnitude
         await self._set_velocity_in_steps(velocity)
+        target_position = await self.get_max_position() if velocity > 0 else await self.get_min_position()
+        self._set_position_in_steps(target_position, wait_for=None)
+        await asyncio.sleep((await self.get_additional_time() + acceleration_time).to(q.s).magnitude)
+
+
+class ContinuousLinearMotor(LinearMotor, base.ContinuousLinearMotor, _MicosContinuous):
+    """A continuous linear motor implementation."""
+
+    max_position = Quantity(q.mm)
+    min_position = Quantity(q.mm)
+
+    async def __ainit__(self, controller, index, host, port):
+        await LinearMotor.__ainit__(self, controller, index, host, port)
+        await base.ContinuousLinearMotor.__ainit__(self)
+        await _MicosContinuous.__ainit__(self)
+        await self.set_max_position(1 * q.km)
+        await self.set_min_position(1 * q.km)
 
 
 class SampleManipulationMotor(ContinuousLinearMotor):
-
     """An implementation specifically for pushers and magnets of LAMINO-I."""
 
     async def __ainit__(self, controller, index, host, port, in_position, out_position,
@@ -156,6 +198,12 @@ class SampleManipulationMotor(ContinuousLinearMotor):
 
         return abs((pos - desired_position).to(q.mm).magnitude) < self._precision
 
+    async def _stop(self):
+        pass
+
+    async def _home(self):
+        pass
+
     async def _set_position_in_steps(self, position, wait_for=None):
         # TODO: do this properly
         msg = await self._connection.execute('{} AxisAbs {} {}'.format(self._controller,
@@ -173,7 +221,7 @@ class SampleManipulationMotor(ContinuousLinearMotor):
         await wait_until(condition, sleep_time=1e-1 * q.s)
 
     async def _get_state(self):
-        state = await super()._get_state()
+        state = await _Base._get_state(self)
         if state == 'standby':
             if await self._is_in_position(self._in_position):
                 return 'in'
@@ -182,7 +230,7 @@ class SampleManipulationMotor(ContinuousLinearMotor):
 
         return state
 
-    async def _set_position(self, position, wait_for=None):
+    async def _set_position(self, position, wait_for="standby"):
         await self._set_position_in_steps(position.to(q.mm).magnitude, wait_for=wait_for)
 
     async def move_in(self):
@@ -193,53 +241,31 @@ class SampleManipulationMotor(ContinuousLinearMotor):
 
 
 class RotationMotor(base.RotationMotor, _Base):
-
     """A rotation motor implementation."""
 
     acceleration = Quantity(q.deg / q.s ** 2)
-
-    async def __ainit__(self, controller, index, host, port):
-        await base.RotationMotor.__ainit__(self)
-        await _Base.__ainit__(self, controller, index, host, port)
-
-    async def _get_position(self):
-        position = await self._get_position_in_steps()
-
-        return position * q.deg
-
-    async def _set_position(self, position):
-        position = position.to(q.deg).magnitude
-        await self._set_position_in_steps(position)
-
-    async def _get_acceleration(self):
-        return await self._get_acceleration_unitless() * q.deg / q.s ** 2
-
-    async def _set_acceleration(self, acceleration):
-        acceleration = acceleration.to(q.deg / q.s ** 2).magnitude
-        await self._set_acceleration_unitless(acceleration)
-
-    async def _get_state(self):
-        return await _Base.get_state(self)
-
-    async def _home(self):
-        await _Base._home(self)
-
+    motion_velocity = Quantity(q.deg / q.s)
     async def _stop(self):
         await _Base._stop(self)
 
+    async def _get_state(self):
+        return await _Base._get_state(self)
 
-class ContinuousRotationMotor(RotationMotor, base.ContinuousRotationMotor):
+    async def __ainit__(self, controller, index, host, port):
+        #await base.RotationMotor.__ainit__(self)
+        await _Base.__ainit__(self, controller, index, host, port)
+        await base.RotationMotor.__ainit__(self)
+        await self.set_motion_velocity(10*q.deg/q.s)
 
+class ContinuousRotationMotor(RotationMotor, base.ContinuousRotationMotor, _MicosContinuous):
     """A continuous rotation motor implementation."""
+    max_position = Quantity(q.deg)
+    min_position = Quantity(q.deg)
 
-    async def _get_velocity(self):
-        velocity = await self._get_velocity_in_steps()
-
-        return velocity * q.deg / q.s
-
-    async def _set_velocity(self, velocity):
-        velocity = velocity.to(q.deg / q.s).magnitude
-        await self._set_velocity_in_steps(velocity)
+    async def __ainit__(self, controller, index, host, port):
+        await RotationMotor.__ainit__(self, controller, index, host, port)
+        await base.ContinuousRotationMotor.__ainit__(self)
+        await _MicosContinuous.__ainit__(self)
 
     async def _home(self):
         await self._connection.execute('{} RefMove {}'.format(self._controller, self._index + 1))
@@ -247,7 +273,6 @@ class ContinuousRotationMotor(RotationMotor, base.ContinuousRotationMotor):
 
 
 class LaminoScanningMotor(ContinuousRotationMotor):
-
     """An implementation with specific functionality for the rotary state of LAMINO-I"""
 
     async def __ainit__(self, controller, index, host, port, pusher1, pusher2):
@@ -257,14 +282,12 @@ class LaminoScanningMotor(ContinuousRotationMotor):
 
     async def _set_position(self, position):
         if await self.pusher1.get_state() == 'out' and await self.pusher2.get_state() == 'out':
-            position = position.to(q.deg).magnitude
-            await self._set_position_in_steps(position)
+            await super()._set_position(position)
         else:
             raise LaminoRotException('Pushers are not out')
 
-
+'''
 class PseudoMotor(Parameterizable, _Base):
-
     position = Parameter(help='Position vector for several axes')
     state = State(default='standby')
 
@@ -328,6 +351,6 @@ class SampleMotor(PseudoMotor):
                 sy45_target.to(q.mm).magnitude
             ])
 
-
+'''
 class LaminoRotException(Exception):
     pass
